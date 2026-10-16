@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\EtchaSketch.Core\EtchaSketch.Core.csproj" />
+    <ProjectReference Include="..\EtchaSketch.Data\EtchaSketch.Data.csproj" />
+  </ItemGroup>
+
+</Project>

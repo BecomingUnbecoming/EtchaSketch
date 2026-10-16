@@ -1,0 +1,18 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/EtchaSketch.Core/EtchaSketch.Core.csproj" />
+    <Project Path="src/EtchaSketch.Data/EtchaSketch.Data.csproj" />
+    <Project Path="src/EtchaSketch.UI/EtchaSketch.UI.csproj" />
+    <Project Path="src/EtchaSketch.Desktop/EtchaSketch.Desktop.csproj" />
+    <Project Path="src/EtchaSketch.Android/EtchaSketch.Android.csproj">
+      <Deploy />
+    </Project>
+    <Project Path="src/EtchaSketch.iOS/EtchaSketch.iOS.csproj">
+      <Deploy />
+    </Project>
+    <Project Path="src/EtchaSketch.Server/EtchaSketch.Server.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/EtchaSketch.Tests/EtchaSketch.Tests.csproj" />
+  </Folder>
+</Solution>
