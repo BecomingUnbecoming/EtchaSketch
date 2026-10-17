@@ -24,5 +24,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\EtchaSketch.UI\EtchaSketch.UI.csproj" />
+    <ProjectReference Include="..\EtchaSketch.Data\EtchaSketch.Data.csproj" />
   </ItemGroup>
 </Project>

@@ -9,5 +9,9 @@ public interface IKeyStore
     /// <summary>Returns the stored key, or null when there is none.</summary>
     byte[]? Load(string name);
 
+    /// <summary>Stores the key, replacing any key already stored under that name.</summary>
     void Save(string name, byte[] key);
+
+    /// <summary>Removes the key. Does nothing when there is none.</summary>
+    void Delete(string name);
 }

@@ -127,5 +127,7 @@ public sealed class EncryptedDatabaseTests : IDisposable
         public byte[]? Load(string name) => _keys.TryGetValue(name, out var key) ? key.ToArray() : null;
 
         public void Save(string name, byte[] key) => _keys[name] = key.ToArray();
+
+        public void Delete(string name) => _keys.Remove(name);
     }
 }
