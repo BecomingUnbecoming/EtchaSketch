@@ -71,6 +71,44 @@ public sealed class ScreenTests : IDisposable
     }
 
     [Fact]
+    public void Importing_a_file_previews_then_adds_the_tasks_to_my_list()
+    {
+        var home = SetUp(Launch());
+        home.OpenImportCommand.Execute(null);
+        var import = home.Import!;
+        import.FileText = """
+            { "format": "etchasketch-tasks", "version": 1, "tasks": [
+              { "title": "Rotate keys", "source": "vikunja:41" },
+              { "title": "Old thing", "done": true } ] }
+            """;
+
+        import.PreviewCommand.Execute(null);
+        Assert.Equal("Ready to add 1 task, 1 finished left out.", import.Summary);
+        Assert.Empty(home.MyTasks);
+
+        import.ImportCommand.Execute(null);
+        Assert.Equal("Added 1 task, 1 finished left out.", import.Summary);
+        Assert.False(import.ImportCommand.CanExecute(null));
+
+        import.CloseCommand.Execute(null);
+        Assert.Null(home.Import);
+        Assert.Equal(["Rotate keys"], home.MyTasks.Select(task => task.Title));
+    }
+
+    [Fact]
+    public void A_file_that_is_not_a_task_file_is_explained()
+    {
+        var home = SetUp(Launch());
+        home.OpenImportCommand.Execute(null);
+        home.Import!.FileText = "hello";
+
+        home.Import.PreviewCommand.Execute(null);
+
+        Assert.StartsWith("That isn't a task file", home.Import.ErrorMessage);
+        Assert.False(home.Import.ImportCommand.CanExecute(null));
+    }
+
+    [Fact]
     public void Setup_explains_what_is_missing()
     {
         var setup = Assert.IsType<SetupViewModel>(Launch().CurrentPage);

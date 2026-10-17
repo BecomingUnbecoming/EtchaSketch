@@ -48,6 +48,7 @@
                     <Button Content="{Binding NotificationsLabel}" Command="{Binding OpenNotificationsCommand}" Margin="0,0,8,8" />
                     <Button Content="Switch person" Command="{Binding SwitchPersonCommand}" Margin="0,0,8,8" />
                     <Button Content="Sync" Command="{Binding OpenSyncCommand}" Margin="0,0,8,8" />
+                    <Button Content="Import tasks" Command="{Binding OpenImportCommand}" Margin="0,0,8,8" />
                     <Button Content="PIN lock" Command="{Binding OpenLockSettingsCommand}" Margin="0,0,8,8" />
                     <Button Content="Lock" Command="{Binding LockCommand}" IsVisible="{Binding CanLock}" Margin="0,0,8,8" />
                 </WrapPanel>
@@ -96,6 +97,10 @@
 
         <Border IsVisible="{Binding IsShowingSync}" Background="#80000000">
             <ContentControl Content="{Binding Sync}" />
+        </Border>
+
+        <Border IsVisible="{Binding IsShowingImport}" Background="#80000000">
+            <ContentControl Content="{Binding Import}" />
         </Border>
 
         <Border IsVisible="{Binding IsShowingLockSettings}" Background="#80000000">

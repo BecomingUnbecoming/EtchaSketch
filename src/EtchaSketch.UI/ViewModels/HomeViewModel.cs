@@ -76,6 +76,13 @@ public partial class HomeViewModel : ViewModelBase
 
     public bool IsShowingSync => Sync is not null;
 
+    /// <summary>The task import panel, or null when it is closed.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsShowingImport))]
+    public partial ImportViewModel? Import { get; private set; }
+
+    public bool IsShowingImport => Import is not null;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(NotificationsLabel))]
     public partial int UnreadCount { get; private set; }
@@ -124,6 +131,16 @@ public partial class HomeViewModel : ViewModelBase
         _session.Reminders.Check(_household, _session.Now);
         UpdateUnreadCount();
     }
+
+    [RelayCommand]
+    private void OpenImport() => Import = new ImportViewModel(_session, _household, _me, imported =>
+    {
+        Import = null;
+        if (imported)
+        {
+            Refresh();
+        }
+    });
 
     [RelayCommand]
     private void OpenSync() => Sync = new SyncViewModel(_session, _household.Id, Synced, () => Sync = null);
