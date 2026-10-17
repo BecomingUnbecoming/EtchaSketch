@@ -40,6 +40,23 @@
 
             <Button Content="Join household" Command="{Binding JoinCommand}" HorizontalAlignment="Stretch"
                     HorizontalContentAlignment="Center" />
+
+            <Separator Margin="0,12" />
+            <TextBlock Text="Lost every device?" FontWeight="SemiBold" TextWrapping="Wrap" />
+            <TextBlock Text="Enter the server address above, then the recovery key you saved and the passphrase you locked it with."
+                       TextWrapping="Wrap" Opacity="0.7" />
+
+            <TextBlock Text="Recovery key" />
+            <TextBox Text="{Binding RecoveryKeyText}" PlaceholderText="ESKEY1-…" AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="120" />
+
+            <TextBlock Text="Passphrase" />
+            <TextBox Text="{Binding RecoveryPassphrase}" PasswordChar="•" />
+
+            <TextBlock Text="{Binding RestoreErrorMessage}" Foreground="#C42B1C" TextWrapping="Wrap"
+                       IsVisible="{Binding RestoreErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+            <Button Content="Restore household" Command="{Binding RestoreCommand}" HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Center" />
         </StackPanel>
     </ScrollViewer>
 </UserControl>

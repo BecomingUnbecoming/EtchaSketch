@@ -134,6 +134,17 @@ public sealed class AppSession : IDisposable
         }
     }
 
+    /// <summary>Brings a household back on this empty device from a recovery key. Returns the profile it was made on.</summary>
+    public async Task<Guid> RestoreAsync(Uri address, string recoveryKey, string passphrase, CancellationToken cancellationToken = default)
+    {
+        var profileId = await Connect(address).RestoreAsync(recoveryKey, passphrase, cancellationToken);
+        LastSynced = Now;
+        return profileId;
+    }
+
+    /// <summary>The keys this device holds, locked under a passphrase, as text to keep somewhere safe.</summary>
+    public string CreateRecoveryKey(string passphrase) => Sync!.CreateRecoveryKey(passphrase);
+
     private SyncEngine Connect(Uri address)
     {
         if (address != SyncServerAddress)

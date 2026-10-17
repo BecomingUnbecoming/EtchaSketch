@@ -135,6 +135,50 @@ public sealed class SyncScreenTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_recovery_key_made_on_the_sync_screen_restores_a_household_on_an_empty_device()
+    {
+        var desktop = SetUp(Launch("desktop"));
+        AddChore(desktop, "Dishes");
+        var sync = await TurnOnSync(desktop);
+        sync.RecoveryPassphrase = "a long passphrase";
+        await sync.MakeRecoveryKeyCommand.ExecuteAsync(null);
+
+        Assert.Null(sync.ErrorMessage);
+        Assert.StartsWith("ESKEY1-", sync.RecoveryKeyText);
+        Assert.Equal("", sync.RecoveryPassphrase);
+
+        var replacement = Launch("new-pc");
+        var setup = Assert.IsType<SetupViewModel>(replacement.CurrentPage);
+        setup.JoinAddress = Address;
+        setup.RecoveryKeyText = sync.RecoveryKeyText!;
+        setup.RecoveryPassphrase = "a long passphrase";
+        await setup.RestoreCommand.ExecuteAsync(null);
+
+        Assert.Null(setup.RestoreErrorMessage);
+        Assert.Equal(["Dishes"], Assert.IsType<HomeViewModel>(replacement.CurrentPage).MyTasks.Select(task => task.Title));
+    }
+
+    [Fact]
+    public async Task A_wrong_passphrase_or_a_short_one_says_so_in_plain_words()
+    {
+        var sync = await TurnOnSync(SetUp(Launch("desktop")));
+        sync.RecoveryPassphrase = "short";
+        await sync.MakeRecoveryKeyCommand.ExecuteAsync(null);
+        Assert.Equal("Use a passphrase of at least 12 characters.", sync.ErrorMessage);
+
+        sync.RecoveryPassphrase = "a long passphrase";
+        await sync.MakeRecoveryKeyCommand.ExecuteAsync(null);
+
+        var setup = Assert.IsType<SetupViewModel>(Launch("new-pc").CurrentPage);
+        setup.JoinAddress = Address;
+        setup.RecoveryKeyText = sync.RecoveryKeyText!;
+        setup.RecoveryPassphrase = "the wrong passphrase";
+        await setup.RestoreCommand.ExecuteAsync(null);
+
+        Assert.StartsWith("That passphrase doesn't open this recovery key", setup.RestoreErrorMessage);
+    }
+
+    [Fact]
     public async Task Changes_arrive_on_the_next_sync()
     {
         var desktop = SetUp(Launch("desktop"));

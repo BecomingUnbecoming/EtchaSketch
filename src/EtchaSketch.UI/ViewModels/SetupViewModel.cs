@@ -53,6 +53,39 @@ public partial class SetupViewModel(AppSession session, Action<Household, Profil
         }
     }
 
+    /// <summary>To bring a household back after every device was lost: its server's address (the join address), a recovery key…</summary>
+    [ObservableProperty]
+    public partial string RecoveryKeyText { get; set; } = "";
+
+    /// <summary>…and the passphrase it was locked with.</summary>
+    [ObservableProperty]
+    public partial string RecoveryPassphrase { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string? RestoreErrorMessage { get; private set; }
+
+    [RelayCommand]
+    private async Task Restore()
+    {
+        Uri? address = null;
+        RestoreErrorMessage = null;
+        try
+        {
+            address = SyncAddress.Parse(JoinAddress);
+            var profileId = await session.RestoreAsync(address, RecoveryKeyText, RecoveryPassphrase);
+            var household = session.Households.HouseholdOf(profileId)!;
+            done(household, household.Members.Single(member => member.Id == profileId));
+        }
+        catch (System.Security.Cryptography.CryptographicException)
+        {
+            RestoreErrorMessage = "That passphrase doesn't open this recovery key. Check it, or that you copied the whole key.";
+        }
+        catch (Exception exception) when (Messages.IsSyncProblem(exception))
+        {
+            RestoreErrorMessage = Messages.ForSync(exception, address);
+        }
+    }
+
     [RelayCommand]
     private void Create()
     {
