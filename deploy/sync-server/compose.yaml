@@ -1,0 +1,16 @@
+# Runs the EtchaSketch sync server. From this folder: docker compose up -d --build
+# The app then uses http://<this machine's address>:5080 as its sync server.
+services:
+  etchasketch-sync:
+    build:
+      context: ../..
+      dockerfile: src/EtchaSketch.Server/Dockerfile
+    image: etchasketch-sync
+    restart: unless-stopped
+    ports:
+      - "5080:8080"
+    volumes:
+      - etchasketch-sync:/data
+
+volumes:
+  etchasketch-sync:

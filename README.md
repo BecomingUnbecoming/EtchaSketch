@@ -25,6 +25,8 @@ dotnet test tests/EtchaSketch.Tests            # run the tests
 
 The Android and iOS projects also need their workloads (`dotnet workload install android ios`).
 
+To sync between devices, run the sync server on a machine at home: see [docs/sync-server.md](docs/sync-server.md).
+
 ## License
 
 AGPL-3.0. See [LICENSE](LICENSE).
