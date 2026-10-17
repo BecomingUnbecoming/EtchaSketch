@@ -65,6 +65,29 @@ public sealed class HouseholdRepository(SqliteConnection connection)
         return new Household(householdId, name, profiles);
     }
 
+    /// <summary>Every household on this device, oldest first.</summary>
+    public IReadOnlyList<Household> All()
+    {
+        var ids = new List<Guid>();
+        using (var command = Command("SELECT id FROM households ORDER BY rowid"))
+        using (var reader = command.ExecuteReader())
+        {
+            while (reader.Read())
+            {
+                ids.Add(Guid.Parse(reader.GetString(0)));
+            }
+        }
+
+        return ids.Select(id => Get(id)!).ToList();
+    }
+
+    /// <summary>The household a profile belongs to, or null when there is no such profile.</summary>
+    public Household? HouseholdOf(Guid profileId)
+    {
+        using var command = Command("SELECT household_id FROM profiles WHERE id = $id", ("$id", profileId.ToString()));
+        return command.ExecuteScalar() is string householdId ? Get(Guid.Parse(householdId)) : null;
+    }
+
     /// <summary>The member using this device, or null before anyone has picked a profile.</summary>
     public Guid? CurrentProfileId()
     {
