@@ -24,6 +24,8 @@ public class PrivacyGatewayTests
         public PrivacyTier Tier { get; init; } = PrivacyTier.Public;
     }
 
+    private static readonly Guid Me = Guid.NewGuid();
+
     private static SampleTask Task(PrivacyTier tier = PrivacyTier.Public) =>
         new("Paint the fence", "Brooks", "Garage", "felt anxious", "4821", "dear diary") { Tier = tier };
 
@@ -40,7 +42,7 @@ public class PrivacyGatewayTests
     public void Untagged_field_is_treated_as_private()
     {
         Assert.False(PrivacyGateway.Project(Task(), Audience.Household)!.ContainsKey(nameof(SampleTask.UntaggedJournal)));
-        Assert.True(PrivacyGateway.Project(Task(), Audience.Owner)!.ContainsKey(nameof(SampleTask.UntaggedJournal)));
+        Assert.True(PrivacyGateway.Project(Task(), Audience.ForProfile(Me))!.ContainsKey(nameof(SampleTask.UntaggedJournal)));
     }
 
     [Fact]
@@ -83,8 +85,8 @@ public class PrivacyGatewayTests
     [Fact]
     public void Secret_is_hidden_from_the_owner_until_unlocked()
     {
-        Assert.False(PrivacyGateway.Project(Task(), Audience.Owner)!.ContainsKey(nameof(SampleTask.DoorCode)));
-        Assert.True(PrivacyGateway.Project(Task(), Audience.OwnerUnlocked)!.ContainsKey(nameof(SampleTask.DoorCode)));
+        Assert.False(PrivacyGateway.Project(Task(), Audience.ForProfile(Me))!.ContainsKey(nameof(SampleTask.DoorCode)));
+        Assert.True(PrivacyGateway.Project(Task(), Audience.ForProfile(Me, unlocked: true))!.ContainsKey(nameof(SampleTask.DoorCode)));
     }
 
     [Fact]
