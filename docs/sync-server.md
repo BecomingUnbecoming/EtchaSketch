@@ -39,6 +39,34 @@ To update it later, run `git pull` and then `docker compose up -d --build` in th
 
 Each person's device gets the household's shared items and only that person's private ones.
 
+## Who can use the server
+
+Everything stored is locked on the devices, so the server can't read it. Reaching the server is a
+different matter: it has no accounts, so anyone who can reach port 5080 can try to store things on
+it. Keep it on your home network or VPN, and don't put it on the internet.
+
+Because of that, the server limits what it will take, so a stranger on your network (or a bug)
+can't fill its disk:
+
+| Setting | Default | What it limits |
+| --- | --- | --- |
+| `Sync__MaxStreams` | 20 | Streams that can exist: one for the household and one per person |
+| `Sync__MaxStreamBytes` | 64 MB | What one stream may store |
+| `Sync__MaxChangeBytes` | 256 KB | One sealed change |
+| `Sync__MaxChangesPerPush` | 500 | Changes in one upload (devices send 200) |
+| `Sync__MaxRequestBytes` | 8 MB | The biggest request the server reads |
+| `Sync__MaxPendingPairings` | 20 | New-device codes waiting to be used |
+| `Sync__RequestsPerMinute` | 600 | Requests from one address |
+| `Sync__PairingRequestsPerMinute` | 30 | New-device requests from one address |
+
+Change one by adding it under `environment:` in `compose.yaml` and running
+`docker compose up -d`. When a limit is hit the app says the server has no room or is getting too
+many requests. The container also has a memory cap and rotating logs.
+
+If you put a reverse proxy in front, every request comes from the proxy's address, so the
+per-address limits apply to all your devices together. Raise `Sync__RequestsPerMinute` if sync
+slows down.
+
 ## Away from home
 
 You don't need to open any ports on your router. To sync while you're out, connect your phone to

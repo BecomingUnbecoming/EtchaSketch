@@ -31,7 +31,7 @@ internal static class Messages
     /// <summary>Whether a sync failed for a reason worth telling the person, rather than a bug.</summary>
     public static bool IsSyncProblem(Exception exception) =>
         exception is HttpRequestException or TaskCanceledException or FormatException or PairingCodeNotFoundException
-            or SyncAccessDeniedException or CryptographicException or InvalidDataException or InvalidOperationException
+            or SyncAccessDeniedException or SyncServerRefusedException or CryptographicException or InvalidDataException or InvalidOperationException
             or ArgumentException;
 
     public static string ForSync(Exception exception, Uri? address) => exception switch
@@ -42,6 +42,7 @@ internal static class Messages
             "The sync server refused this device's key. Pair it again with a new code from a device that's already set up.",
         CryptographicException =>
             "Something from the sync server didn't match this household's keys, so it was ignored and nothing changed.",
+        SyncServerRefusedException refused => refused.Message,
         ArgumentException argument => Friendly(argument),
         _ => exception.Message,
     };

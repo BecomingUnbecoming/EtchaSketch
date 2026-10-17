@@ -11,6 +11,15 @@ services:
       - "5080:8080"
     volumes:
       - etchasketch-sync:/data
+    # Limits on how much the server may take are in the Sync section of its settings; set any of
+    # them here, for example Sync__MaxStreams: "20". The defaults suit a household.
+    mem_limit: 256m
+    pids_limit: 100
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
 
 volumes:
   etchasketch-sync:

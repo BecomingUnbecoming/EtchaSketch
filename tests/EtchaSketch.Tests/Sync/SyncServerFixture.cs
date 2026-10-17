@@ -24,15 +24,17 @@ internal sealed class SyncServerFixture : IAsyncDisposable
 
     public string StorePath => Path.Combine(Directory, "sync.db");
 
-    public static async Task<SyncServerFixture> StartAsync(TimeProvider? clock = null)
+    public static async Task<SyncServerFixture> StartAsync(TimeProvider? clock = null, SyncLimits? limits = null)
     {
         var directory = System.IO.Directory.CreateTempSubdirectory("etchasketch-server-").FullName;
-        var store = new SyncStore(Path.Combine(directory, "sync.db"), clock ?? TimeProvider.System);
+        var store = new SyncStore(Path.Combine(directory, "sync.db"), clock ?? TimeProvider.System, limits);
 
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
         builder.Services.AddSingleton(store);
+        builder.Services.AddSyncRateLimits(limits ?? new SyncLimits());
         var app = builder.Build();
+        app.UseRateLimiter();
         app.MapSyncApi();
         await app.StartAsync();
         return new SyncServerFixture(app, directory, store);
