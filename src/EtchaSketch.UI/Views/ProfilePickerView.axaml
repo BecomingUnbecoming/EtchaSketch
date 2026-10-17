@@ -1,0 +1,33 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:EtchaSketch.UI.ViewModels"
+             x:Class="EtchaSketch.UI.Views.ProfilePickerView"
+             x:DataType="vm:ProfilePickerViewModel">
+    <ScrollViewer>
+        <StackPanel Margin="24" Spacing="12" MaxWidth="420" VerticalAlignment="Center">
+            <TextBlock Text="Who's using EtchaSketch?" FontSize="24" FontWeight="SemiBold" />
+
+            <ItemsControl ItemsSource="{Binding People}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Spacing="8" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:PersonChoice">
+                        <Button Content="{Binding Name}" Command="{Binding ChooseCommand}"
+                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Padding="12" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <TextBlock Text="Add someone" Margin="0,12,0,0" FontWeight="SemiBold" />
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <TextBox Text="{Binding NewPersonName}" PlaceholderText="Name" />
+                <Button Grid.Column="1" Content="Add" Command="{Binding AddPersonCommand}" />
+            </Grid>
+            <TextBlock Text="{Binding ErrorMessage}" Foreground="#C42B1C" TextWrapping="Wrap"
+                       IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

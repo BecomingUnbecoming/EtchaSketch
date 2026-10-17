@@ -15,6 +15,10 @@ namespace EtchaSketch.Android
 
         protected override AppBuilder CustomizeAppBuilder(AppBuilder builder)
         {
+            App.Environment = new AppEnvironment(
+                System.IO.Path.Combine(FilesDir!.AbsolutePath, "etchasketch.db"),
+                new AndroidKeyStore(this));
+
             return base.CustomizeAppBuilder(builder)
             .WithInterFont();
         }
