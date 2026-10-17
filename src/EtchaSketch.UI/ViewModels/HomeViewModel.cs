@@ -17,6 +17,7 @@ public partial class HomeViewModel : ViewModelBase
     private readonly Household _household;
     private readonly Profile _me;
     private readonly Action _switchPerson;
+    private DateOnly _shownDay;
 
     public HomeViewModel(AppSession session, Household household, Profile me, Action switchPerson)
     {
@@ -41,11 +42,57 @@ public partial class HomeViewModel : ViewModelBase
 
     public bool IsEditing => Editor is not null;
 
+    /// <summary>The notification panel, or null when it is closed.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsShowingNotifications))]
+    public partial NotificationCenterViewModel? Notifications { get; private set; }
+
+    public bool IsShowingNotifications => Notifications is not null;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NotificationsLabel))]
+    public partial int UnreadCount { get; private set; }
+
+    public string NotificationsLabel => UnreadCount > 0 ? $"Notifications ({UnreadCount})" : "Notifications";
+
     [RelayCommand]
     private void NewTask() => Editor = new TaskEditorViewModel(_session, _household, _me, existing: null, CloseEditor);
 
     [RelayCommand]
     private void SwitchPerson() => _switchPerson();
+
+    [RelayCommand]
+    private void OpenNotifications()
+    {
+        CheckReminders();
+        Notifications = new NotificationCenterViewModel(_session, _me, CloseNotifications);
+        UpdateUnreadCount();
+    }
+
+    /// <summary>
+    /// Raises any reminders that have come due. The home screen runs this every minute while it is
+    /// open, and rebuilds its lists when the day changes so "Today" stays true.
+    /// </summary>
+    [RelayCommand]
+    private void CheckReminders()
+    {
+        if (_session.Today != _shownDay)
+        {
+            Refresh();
+            return;
+        }
+
+        _session.Reminders.Check(_household, _session.Now);
+        UpdateUnreadCount();
+    }
+
+    private void CloseNotifications()
+    {
+        Notifications = null;
+        UpdateUnreadCount();
+    }
+
+    private void UpdateUnreadCount() => UnreadCount = _session.Notifications.UnreadCount(_me.Id, _session.Now);
 
     private void CloseEditor(bool saved)
     {
@@ -58,6 +105,10 @@ public partial class HomeViewModel : ViewModelBase
 
     private void Refresh()
     {
+        _shownDay = _session.Today;
+        _session.Reminders.Check(_household, _session.Now);
+        UpdateUnreadCount();
+
         MyTasks.Clear();
         foreach (var row in _session.Tasks.VisibleTo(_me.Id).Select(Row).OfType<TaskRowViewModel>())
         {

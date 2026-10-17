@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using EtchaSketch.Data.Notifications;
 using EtchaSketch.Data.Profiles;
 using EtchaSketch.Data.Storage;
 using EtchaSketch.Data.Tasks;
@@ -19,15 +20,24 @@ public sealed class AppSession : IDisposable
         _clock = clock;
         Households = new HouseholdRepository(connection);
         Tasks = new TaskRepository(connection);
+        Notifications = new NotificationRepository(connection);
+        Reminders = new Reminders(Tasks, Notifications);
     }
 
     public HouseholdRepository Households { get; }
 
     public TaskRepository Tasks { get; }
 
+    public NotificationRepository Notifications { get; }
+
+    public Reminders Reminders { get; }
+
     public DateTimeOffset Now => _clock.GetLocalNow();
 
     public DateOnly Today => DateOnly.FromDateTime(Now.DateTime);
+
+    /// <summary>A stored time as the clock on this device shows it.</summary>
+    public DateTimeOffset Local(DateTimeOffset time) => TimeZoneInfo.ConvertTime(time, _clock.LocalTimeZone);
 
     public static AppSession Open(AppEnvironment environment)
     {
