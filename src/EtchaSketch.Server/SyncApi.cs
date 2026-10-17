@@ -10,7 +10,7 @@ public static partial class SyncApi
     {
         app.MapGet("/health", () => "ok");
 
-        app.MapPost("/v1/streams/{streamId}/changes", (string streamId, PushRequest body, HttpRequest request, SyncStore store) =>
+        app.MapPost("/v1/streams/{streamId}/changes", (string streamId, PushRequest body, HttpRequest request, SyncStore store, SyncAccess access, HttpResponse response) =>
         {
             if (!StreamId().IsMatch(streamId))
             {
@@ -22,8 +22,9 @@ public static partial class SyncApi
                 return Results.Unauthorized();
             }
 
-            return store.Push(streamId, token, body.Changes) switch
+            return store.Push(streamId, token, body.Changes, mayCreateStream: access.Allows(request)) switch
             {
+                PushResult.NeedsJoinToken => NeedsJoinToken(response),
                 PushResult.Stored => Results.NoContent(),
                 PushResult.Denied => Results.StatusCode(StatusCodes.Status403Forbidden),
                 PushResult.TooLarge => Results.StatusCode(StatusCodes.Status413PayloadTooLarge),
@@ -48,11 +49,16 @@ public static partial class SyncApi
                 : Results.StatusCode(StatusCodes.Status403Forbidden);
         }).RequireRateLimiting(SyncRateLimits.General);
 
-        app.MapPut("/v1/pairings/{pairingId}", (string pairingId, PairingRequest body, SyncStore store) =>
+        app.MapPut("/v1/pairings/{pairingId}", (string pairingId, PairingRequest body, HttpRequest request, HttpResponse response, SyncStore store, SyncAccess access) =>
         {
             if (!PairingId().IsMatch(pairingId))
             {
                 return Results.BadRequest();
+            }
+
+            if (!access.Allows(request))
+            {
+                return NeedsJoinToken(response);
             }
 
             return store.PutPairing(pairingId, body.Data) switch
@@ -75,6 +81,12 @@ public static partial class SyncApi
         }).RequireRateLimiting(SyncRateLimits.Pairing);
 
         return app;
+    }
+
+    private static IResult NeedsJoinToken(HttpResponse response)
+    {
+        response.Headers.WWWAuthenticate = SyncAccess.Challenge;
+        return Results.StatusCode(StatusCodes.Status401Unauthorized);
     }
 
     private static string? BearerToken(HttpRequest request)

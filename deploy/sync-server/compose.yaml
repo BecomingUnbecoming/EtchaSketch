@@ -13,6 +13,9 @@ services:
       - etchasketch-sync:/data
     # Limits on how much the server may take are in the Sync section of its settings; set any of
     # them here, for example Sync__MaxStreams: "20". The defaults suit a household.
+    environment:
+      # Set SYNC_JOIN_TOKEN in a file named .env next to this one (see .env.example).
+      Sync__JoinToken: "${SYNC_JOIN_TOKEN:-}"
     mem_limit: 256m
     pids_limit: 100
     logging:

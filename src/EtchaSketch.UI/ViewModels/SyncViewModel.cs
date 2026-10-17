@@ -29,11 +29,16 @@ public partial class SyncViewModel : ViewModelBase
         _synced = synced;
         _close = close;
         ServerAddress = session.SyncServerAddress?.ToString() ?? "";
+        JoinToken = session.Sync?.JoinToken ?? "";
         Update();
     }
 
     [ObservableProperty]
     public partial string ServerAddress { get; set; }
+
+    /// <summary>The server's join token, if its owner set one. It stays on this device and travels to new devices with their code.</summary>
+    [ObservableProperty]
+    public partial string JoinToken { get; set; } = "";
 
     [ObservableProperty]
     public partial bool IsEnabled { get; private set; }
@@ -74,9 +79,16 @@ public partial class SyncViewModel : ViewModelBase
         await Run(async () =>
         {
             address = SyncAddress.Parse(ServerAddress);
-            await _session.TurnOnSyncAsync(address, _householdId);
+            await _session.TurnOnSyncAsync(address, _householdId, JoinToken);
         }, () => address);
     }
+
+    [RelayCommand]
+    private Task SaveJoinToken() => Run(async () =>
+    {
+        _session.SetJoinToken(JoinToken);
+        await SyncNow();
+    }, () => _session.SyncServerAddress);
 
     [RelayCommand]
     private Task SyncNow() => Run(async () =>

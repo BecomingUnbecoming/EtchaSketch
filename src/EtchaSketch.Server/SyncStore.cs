@@ -62,7 +62,7 @@ public sealed class SyncStore : IDisposable
     /// Appends changes to a stream. The first device to write a stream sets its token; after that
     /// only the same token may use it. Nothing is stored unless the whole push fits the limits.
     /// </summary>
-    public PushResult Push(string streamId, string accessToken, IReadOnlyList<byte[]> changes)
+    public PushResult Push(string streamId, string accessToken, IReadOnlyList<byte[]> changes, bool mayCreateStream = true)
     {
         if (changes.Count > _limits.MaxChangesPerPush || changes.Any(change => change.Length > _limits.MaxChangeBytes))
         {
@@ -77,6 +77,11 @@ public sealed class SyncStore : IDisposable
                 case Access.Denied:
                     return PushResult.Denied;
                 case Access.Unknown:
+                    if (!mayCreateStream)
+                    {
+                        return PushResult.NeedsJoinToken;
+                    }
+
                     if (Convert.ToInt64(Scalar("SELECT COUNT(*) FROM streams"), CultureInfo.InvariantCulture) >= _limits.MaxStreams)
                     {
                         return PushResult.NoRoom;
@@ -233,6 +238,7 @@ public enum PushResult
     Denied,
     TooLarge,
     NoRoom,
+    NeedsJoinToken,
 }
 
 /// <summary>What happened to a new-device code left on the server.</summary>

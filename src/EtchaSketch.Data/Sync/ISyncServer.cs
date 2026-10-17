@@ -5,6 +5,9 @@ namespace EtchaSketch.Data.Sync;
 /// <summary>The sync server as a device sees it: a place to leave and fetch sealed bytes.</summary>
 public interface ISyncServer
 {
+    /// <summary>The server's join token, sent with every request. Servers that don't ask for one ignore it.</summary>
+    string? JoinToken { get; set; }
+
     /// <exception cref="SyncAccessDeniedException">The stream belongs to another key.</exception>
     Task PushAsync(string streamId, string accessToken, IReadOnlyList<byte[]> changes, CancellationToken cancellationToken = default);
 
