@@ -179,6 +179,64 @@ public sealed class SyncScreenTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_server_that_asks_for_a_join_token_is_explained_and_accepts_the_right_one()
+    {
+        await using var guarded = await SyncServerFixture.StartAsync(joinToken: "the-join-token");
+        var home = SetUp(Launch("desktop", _ => guarded.Client()));
+        home.OpenSyncCommand.Execute(null);
+        var sync = home.Sync!;
+        sync.ServerAddress = Address;
+
+        await sync.TurnOnCommand.ExecuteAsync(null);
+        Assert.Contains("join token", sync.ErrorMessage);
+
+        sync.JoinToken = "the-join-token";
+        await sync.TurnOnCommand.ExecuteAsync(null);
+        Assert.Null(sync.ErrorMessage);
+        Assert.True(sync.IsEnabled);
+    }
+
+    [Fact]
+    public async Task The_join_token_reaches_new_devices_with_their_code_and_with_a_recovery_key()
+    {
+        await using var guarded = await SyncServerFixture.StartAsync(joinToken: "the-join-token");
+        var desktop = SetUp(Launch("desktop", _ => guarded.Client()));
+        desktop.OpenSyncCommand.Execute(null);
+        var sync = desktop.Sync!;
+        sync.ServerAddress = Address;
+        sync.JoinToken = "the-join-token";
+        await sync.TurnOnCommand.ExecuteAsync(null);
+        var code = await Invite(sync, "Kai");
+        sync.RecoveryPassphrase = "a long passphrase";
+        await sync.MakeRecoveryKeyCommand.ExecuteAsync(null);
+        AddChore(desktop, "Dishes");
+        await desktop.AutoSyncCommand.ExecuteAsync(null);
+
+        // Kai never types the token, yet his phone can sync and make a code of its own.
+        var phone = Launch("kai-phone", _ => guarded.Client());
+        await TryJoin(phone, code);
+        var kai = Assert.IsType<HomeViewModel>(phone.CurrentPage);
+        kai.OpenSyncCommand.Execute(null);
+        Assert.Equal("the-join-token", kai.Sync!.JoinToken);
+        AddChore(kai, "Bins");
+        await kai.AutoSyncCommand.ExecuteAsync(null);
+        await desktop.AutoSyncCommand.ExecuteAsync(null);
+        Assert.Contains("Bins", desktop.MyTasks.Select(task => task.Title));
+
+        // So does a restore from the recovery key.
+        var replacement = Launch("new-pc", _ => guarded.Client());
+        var setup = Assert.IsType<SetupViewModel>(replacement.CurrentPage);
+        setup.JoinAddress = Address;
+        setup.RecoveryKeyText = sync.RecoveryKeyText!;
+        setup.RecoveryPassphrase = "a long passphrase";
+        await setup.RestoreCommand.ExecuteAsync(null);
+        Assert.Null(setup.RestoreErrorMessage);
+        var restored = Assert.IsType<HomeViewModel>(replacement.CurrentPage);
+        restored.OpenSyncCommand.Execute(null);
+        Assert.Equal("the-join-token", restored.Sync!.JoinToken);
+    }
+
+    [Fact]
     public async Task Changes_arrive_on_the_next_sync()
     {
         var desktop = SetUp(Launch("desktop"));

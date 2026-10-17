@@ -96,11 +96,16 @@ public sealed class AppSession : IDisposable
     }
 
     /// <summary>Starts syncing a household set up on this device through the server at an address.</summary>
-    public async Task TurnOnSyncAsync(Uri address, Guid householdId, CancellationToken cancellationToken = default)
+    public async Task TurnOnSyncAsync(Uri address, Guid householdId, string? joinToken = null, CancellationToken cancellationToken = default)
     {
-        Connect(address).Enable(householdId);
+        var sync = Connect(address);
+        sync.SetJoinToken(joinToken);
+        sync.Enable(householdId);
         await SyncAsync(cancellationToken);
     }
+
+    /// <summary>Remembers the sync server's join token, if it asks for one.</summary>
+    public void SetJoinToken(string? joinToken) => Sync?.SetJoinToken(joinToken);
 
     /// <summary>Joins a household with a pairing code from one of its devices. Returns the profile it was for.</summary>
     public async Task<Guid> JoinAsync(Uri address, string pairingCode, CancellationToken cancellationToken = default)

@@ -19,6 +19,10 @@
                 <TextBlock Text="Sync server address" />
                 <TextBox Text="{Binding ServerAddress}" PlaceholderText="http://192.168.1.20:5080" />
 
+                <TextBlock Text="Join token (only if the server asks for one)" />
+                <TextBox Text="{Binding JoinToken}" PasswordChar="•" />
+                <Button Content="Save token and sync" Command="{Binding SaveJoinTokenCommand}" IsVisible="{Binding IsEnabled}" />
+
                 <Button Content="Turn on sync" Command="{Binding TurnOnCommand}" Classes="accent"
                         IsVisible="{Binding !IsEnabled}" />
                 <Button Content="Sync now" Command="{Binding SyncNowCommand}" IsVisible="{Binding IsEnabled}" />

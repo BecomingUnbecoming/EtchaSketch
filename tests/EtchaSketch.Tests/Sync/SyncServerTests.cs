@@ -197,6 +197,45 @@ public sealed class SyncServerTests : IAsyncLifetime
         }
     }
 
+    [Fact]
+    public async Task With_a_join_token_set_a_stranger_cannot_start_a_stream_or_leave_a_code()
+    {
+        await using var server = await SyncServerFixture.StartAsync(joinToken: "the-join-token");
+        var stranger = server.Client();
+
+        var refusedPush = await Assert.ThrowsAsync<SyncServerRefusedException>(() => stranger.PushAsync(Stream, Token, [[1]]));
+        var refusedCode = await Assert.ThrowsAsync<SyncServerRefusedException>(() => stranger.PutPairingAsync("0123456789abcdef0123456789abcdef", [1]));
+
+        Assert.Contains("join token", refusedPush.Message);
+        Assert.Contains("join token", refusedCode.Message);
+        Assert.Empty((await stranger.PullAsync(Stream, Token, after: 0)).Changes);
+    }
+
+    [Fact]
+    public async Task A_wrong_join_token_is_turned_away_like_none()
+    {
+        await using var server = await SyncServerFixture.StartAsync(joinToken: "the-join-token");
+        var client = server.Client();
+        client.JoinToken = "a-guess";
+
+        await Assert.ThrowsAsync<SyncServerRefusedException>(() => client.PushAsync(Stream, Token, [[1]]));
+    }
+
+    [Fact]
+    public async Task The_right_join_token_lets_a_device_start_things_and_existing_streams_need_no_token()
+    {
+        await using var server = await SyncServerFixture.StartAsync(joinToken: "the-join-token");
+        var member = server.Client();
+        member.JoinToken = "the-join-token";
+        await member.PushAsync(Stream, Token, [[1]]);
+        await member.PutPairingAsync("0123456789abcdef0123456789abcdef", [9]);
+
+        var newDevice = server.Client();
+        Assert.Equal([9], await newDevice.ClaimPairingAsync("0123456789abcdef0123456789abcdef"));
+        await newDevice.PushAsync(Stream, Token, [[2]]);
+        Assert.Equal(2, (await newDevice.PullAsync(Stream, Token, after: 0)).Changes.Count);
+    }
+
     private sealed class ManualClock(DateTimeOffset now) : TimeProvider
     {
         public DateTimeOffset Now { get; set; } = now;

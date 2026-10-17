@@ -6,12 +6,20 @@ var limits = builder.Configuration.GetSection("Sync").Get<SyncLimits>() ?? new S
 builder.WebHost.ConfigureKestrel(kestrel => kestrel.Limits.MaxRequestBodySize = limits.MaxRequestBytes);
 builder.Services.AddSyncRateLimits(limits);
 
+var access = new SyncAccess(builder.Configuration["Sync:JoinToken"]);
+builder.Services.AddSingleton(access);
+
 // The store holds only sealed changes, so it needs no key of its own.
 var storePath = builder.Configuration["Sync:StorePath"] ?? Path.Combine(AppContext.BaseDirectory, "data", "sync.db");
 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(storePath))!);
 builder.Services.AddSingleton(new SyncStore(storePath, TimeProvider.System, limits));
 
 var app = builder.Build();
+
+if (access.IsOpen)
+{
+    app.Logger.LogWarning("No join token is set (Sync__JoinToken), so anyone who can reach this server can create streams on it. Fine on a home network; set one before reaching it from outside.");
+}
 
 app.UseRateLimiter();
 

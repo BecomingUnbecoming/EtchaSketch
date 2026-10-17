@@ -8,6 +8,10 @@ namespace EtchaSketch.Data.Sync;
 /// <summary>Talks to an EtchaSketch sync server over HTTP. The client's base address is the server's address.</summary>
 public sealed class HttpSyncServer(HttpClient http) : ISyncServer
 {
+    private const string JoinTokenHeader = "X-Join-Token";
+
+    public string? JoinToken { get; set; }
+
     public async Task PushAsync(string streamId, string accessToken, IReadOnlyList<byte[]> changes, CancellationToken cancellationToken = default)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, $"v1/streams/{streamId}/changes")
@@ -15,6 +19,7 @@ public sealed class HttpSyncServer(HttpClient http) : ISyncServer
             Content = JsonContent.Create(new PushRequest(changes)),
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        AddJoinToken(request);
         using var response = await http.SendAsync(request, cancellationToken);
         EnsureAllowed(response, streamId);
     }
@@ -31,7 +36,12 @@ public sealed class HttpSyncServer(HttpClient http) : ISyncServer
 
     public async Task PutPairingAsync(string pairingId, byte[] sealedKeys, CancellationToken cancellationToken = default)
     {
-        using var response = await http.PutAsJsonAsync($"v1/pairings/{pairingId}", new PairingRequest(sealedKeys), cancellationToken);
+        using var request = new HttpRequestMessage(HttpMethod.Put, $"v1/pairings/{pairingId}")
+        {
+            Content = JsonContent.Create(new PairingRequest(sealedKeys)),
+        };
+        AddJoinToken(request);
+        using var response = await http.SendAsync(request, cancellationToken);
         EnsureNotRefused(response);
         response.EnsureSuccessStatusCode();
     }
@@ -60,10 +70,20 @@ public sealed class HttpSyncServer(HttpClient http) : ISyncServer
         response.EnsureSuccessStatusCode();
     }
 
+    private void AddJoinToken(HttpRequestMessage request)
+    {
+        if (!string.IsNullOrEmpty(JoinToken))
+        {
+            request.Headers.TryAddWithoutValidation(JoinTokenHeader, JoinToken);
+        }
+    }
+
     private static void EnsureNotRefused(HttpResponseMessage response)
     {
         switch (response.StatusCode)
         {
+            case HttpStatusCode.Unauthorized when response.Headers.WwwAuthenticate.Any(challenge => challenge.Scheme == "JoinToken"):
+                throw new SyncServerRefusedException("This sync server asks for a join token, and this device's is missing or wrong. Enter the server's join token in Sync settings.");
             case HttpStatusCode.TooManyRequests:
                 throw new SyncServerRefusedException("The sync server is getting too many requests from this device. Wait a minute and try again.");
             case HttpStatusCode.RequestEntityTooLarge or HttpStatusCode.InsufficientStorage:

@@ -42,8 +42,24 @@ Each person's device gets the household's shared items and only that person's pr
 ## Who can use the server
 
 Everything stored is locked on the devices, so the server can't read it. Reaching the server is a
-different matter: it has no accounts, so anyone who can reach port 5080 can try to store things on
-it. Keep it on your home network or VPN, and don't put it on the internet.
+different matter, so there are two layers:
+
+- **A join token.** Make a secret (`openssl rand -base64 24`), put it in a file named `.env` next to
+  `compose.yaml` as `SYNC_JOIN_TOKEN=…` (see `.env.example`), and run `docker compose up -d`. From
+  then on the server only lets a device create a stream or leave a new-device code if it knows the
+  token. Enter it under **Join token** in Sync when you turn sync on. Other devices get it for free:
+  it travels with their one-time code and sits inside the recovery key. Devices already syncing
+  keep working with their own keys.
+- **Limits** on what anyone can store, below.
+
+With no token set the server is open to anyone who can reach it, and says so in its log when it
+starts. That is fine on a home network you trust, but set one before reaching the server from
+outside.
+
+The token stops strangers from using your server; it does not make one person's device different
+from another's. If a phone is lost, change the token and keep going: devices already syncing keep
+working, and new ones need the new token. Cutting off a single lost device is a job for per-person
+accounts, which are not built yet.
 
 Because of that, the server limits what it will take, so a stranger on your network (or a bug)
 can't fill its disk:
@@ -69,13 +85,19 @@ slows down.
 
 ## Away from home
 
-You don't need to open any ports on your router. To sync while you're out, connect your phone to
-your home network over a VPN such as Tailscale or WireGuard, and use the server's address on that
-network. Changes made while you're offline sync the next time the app can reach the server.
+You don't need to open any ports on your router. There are two ways to sync while you're out:
 
-Plain `http://` is fine on your home network or VPN, because everything is locked before it is
-sent. If you already run a reverse proxy with HTTPS, you can put the server behind it and use the
-`https://` address instead.
+1. **A VPN** such as Tailscale or WireGuard: connect your phone to your home network and use the
+   server's address on it. Plain `http://` is fine here, because everything is locked before it is
+   sent.
+2. **A public HTTPS address**, for example through a Cloudflare Tunnel or a reverse proxy you
+   already run, pointing at `http://<server>:5080`. Use this only with a join token set, and use the
+   `https://` address in the app. Everything is still locked on the device, but the token and the
+   server's address are then reachable from the internet, so keep the limits, keep the server
+   updated, and expect strangers to knock. Behind a tunnel or proxy every device appears to come from
+   one address, so raise `Sync__RequestsPerMinute` if sync slows down.
+
+Changes made while you're offline sync the next time the app can reach the server.
 
 ## Recovery key
 

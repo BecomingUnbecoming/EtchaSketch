@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using EtchaSketch.Data.Profiles;
+using EtchaSketch.Data.Storage;
 using Microsoft.Data.Sqlite;
 
 namespace EtchaSketch.Data.Sync;
@@ -34,8 +35,20 @@ public sealed class SyncEngine(SqliteConnection connection, ISyncServer server, 
     private const string DeviceIdKey = "sync_device_id";
     private const string ClockKey = "sync_clock";
 
+    private const string JoinTokenKey = "sync_join_token";
+
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
+    private readonly DeviceSettings _settings = new(connection);
     private readonly Dictionary<string, HashSet<string>> _columns = [];
+
+    /// <summary>
+    /// The secret the sync server may ask for before it lets a device start anything. It travels to
+    /// new devices with their pairing code and sits in the recovery key. Null when the server has none.
+    /// </summary>
+    public string? JoinToken => _settings.Get(JoinTokenKey) is { Length: > 0 } token ? token : null;
+
+    /// <summary>Remembers the server's join token on this device. Blank clears it.</summary>
+    public void SetJoinToken(string? token) => _settings.Set(JoinTokenKey, token?.Trim() ?? "");
 
     /// <summary>True once this device holds a household's key.</summary>
     public bool IsEnabled =>
@@ -81,8 +94,8 @@ public sealed class SyncEngine(SqliteConnection connection, ISyncServer server, 
         await SyncAsync(cancellationToken);
 
         var code = PairingCode.New();
-        var bundle = JsonSerializer.SerializeToUtf8Bytes(new PairingBundle(profileId, keys));
-        await server.PutPairingAsync(code.PairingId, code.Seal(bundle), cancellationToken);
+        var bundle = JsonSerializer.SerializeToUtf8Bytes(new PairingBundle(profileId, keys, JoinToken));
+        await Remote().PutPairingAsync(code.PairingId, code.Seal(bundle), cancellationToken);
         return code.Text;
     }
 
@@ -101,12 +114,12 @@ public sealed class SyncEngine(SqliteConnection connection, ISyncServer server, 
             throw new InvalidOperationException("This device already has a household, so it can't join another.");
         }
 
-        var sealedBundle = await server.ClaimPairingAsync(code.PairingId, cancellationToken)
+        var sealedBundle = await Remote().ClaimPairingAsync(code.PairingId, cancellationToken)
                            ?? throw new PairingCodeNotFoundException();
         var bundle = JsonSerializer.Deserialize<PairingBundle>(code.Open(sealedBundle))
                      ?? throw new InvalidDataException("The pairing held no keys.");
 
-        return await TakeAsync(bundle.ProfileId, bundle.Keys, cancellationToken);
+        return await TakeAsync(bundle.ProfileId, bundle.Keys, bundle.JoinToken, cancellationToken);
     }
 
     /// <summary>
@@ -129,7 +142,7 @@ public sealed class SyncEngine(SqliteConnection connection, ISyncServer server, 
             throw new InvalidOperationException("Sync is off, so there are no keys to keep. Turn on sync first.");
         }
 
-        return RecoveryKey.Create(passphrase, new RecoveryContents(profileId, keys), iterations);
+        return RecoveryKey.Create(passphrase, new RecoveryContents(profileId, keys, JoinToken), iterations);
     }
 
     /// <summary>
@@ -141,10 +154,16 @@ public sealed class SyncEngine(SqliteConnection connection, ISyncServer server, 
     public async Task<Guid> RestoreAsync(string recoveryKey, string passphrase, CancellationToken cancellationToken = default)
     {
         var contents = RecoveryKey.Open(passphrase, recoveryKey);
-        return await TakeAsync(contents.ProfileId, contents.Keys, cancellationToken);
+        return await TakeAsync(contents.ProfileId, contents.Keys, contents.JoinToken, cancellationToken);
     }
 
-    private async Task<Guid> TakeAsync(Guid profileId, IReadOnlyDictionary<string, byte[]> keys, CancellationToken cancellationToken)
+    private ISyncServer Remote()
+    {
+        server.JoinToken = JoinToken;
+        return server;
+    }
+
+    private async Task<Guid> TakeAsync(Guid profileId, IReadOnlyDictionary<string, byte[]> keys, string? joinToken, CancellationToken cancellationToken)
     {
         var households = new HouseholdRepository(connection);
         if (households.All().Count > 0)
@@ -163,6 +182,7 @@ public sealed class SyncEngine(SqliteConnection connection, ISyncServer server, 
             Execute("INSERT INTO sync_keys (scope, key) VALUES ($scope, $key) ON CONFLICT (scope) DO NOTHING", ("$scope", scope), ("$key", key));
         }
 
+        SetJoinToken(joinToken);
         await SyncAsync(cancellationToken);
         households.SetCurrentProfile(profileId);
         return profileId;
@@ -251,7 +271,7 @@ public sealed class SyncEngine(SqliteConnection connection, ISyncServer server, 
 
         while (true)
         {
-            var page = await server.PullAsync(stream.StreamId, stream.AccessToken, after, cancellationToken);
+            var page = await Remote().PullAsync(stream.StreamId, stream.AccessToken, after, cancellationToken);
             using (var transaction = connection.BeginTransaction())
             {
                 foreach (var change in page.Changes)
@@ -372,7 +392,7 @@ public sealed class SyncEngine(SqliteConnection connection, ISyncServer server, 
                     break;
                 }
 
-                await server.PushAsync(stream.StreamId, stream.AccessToken,
+                await Remote().PushAsync(stream.StreamId, stream.AccessToken,
                     batch.Select(entry => stream.Seal(Encoding.UTF8.GetBytes(entry.Change))).ToList(), cancellationToken);
                 Execute("DELETE FROM sync_outbox WHERE scope = $scope AND id <= $last", ("$scope", scope), ("$last", batch[^1].Id));
                 sent += batch.Count;
@@ -583,5 +603,5 @@ public sealed class SyncEngine(SqliteConnection connection, ISyncServer server, 
     private sealed record SyncRecord(string Table, string Key, string Scope, string Version, string? Hash);
 
     /// <summary>What a pairing code carries: who the new device is for, and the keys they need.</summary>
-    private sealed record PairingBundle(Guid ProfileId, Dictionary<string, byte[]> Keys);
+    private sealed record PairingBundle(Guid ProfileId, Dictionary<string, byte[]> Keys, string? JoinToken = null);
 }
