@@ -12,6 +12,7 @@ namespace EtchaSketch.Core.Privacy;
 /// Rules:
 /// <list type="bullet">
 /// <item>An item above the audience's clearance is withheld entirely.</item>
+/// <item>Someone else's <see cref="IOwned"/> item is shown at no more than Household.</item>
 /// <item>A property's tier is the more restricted of its <see cref="TierAttribute"/> (Private if untagged) and its item's tier.</item>
 /// <item>Nested <see cref="ITiered"/> items, alone or in lists, go through the same rules.</item>
 /// <item>Any other nested object is withheld, because its own properties carry no tiers.</item>
@@ -34,7 +35,8 @@ public static class PrivacyGateway
 
     private static GatewayView? Project(ITiered item, Audience audience, HashSet<object> path)
     {
-        if (!audience.CanSee(item.Tier) || !path.Add(item))
+        var clearance = audience.ClearanceFor(item);
+        if (item.Tier > clearance || !path.Add(item))
         {
             return null;
         }
@@ -42,8 +44,7 @@ public static class PrivacyGateway
         var fields = new List<KeyValuePair<string, object?>>();
         foreach (var property in PropertiesOf(item.GetType()))
         {
-            var tier = Max(property.Tier, item.Tier);
-            if (!audience.CanSee(tier))
+            if (Max(property.Tier, item.Tier) > clearance)
             {
                 continue;
             }
@@ -118,9 +119,12 @@ public static class PrivacyGateway
     private static TieredProperty[] PropertiesOf(Type type) =>
         PropertiesByType.GetOrAdd(type, static t => t
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.CanRead && p.GetIndexParameters().Length == 0 && p.Name != nameof(ITiered.Tier))
+            .Where(p => p.CanRead && p.GetIndexParameters().Length == 0 && !IsPrivacyMetadata(p.Name))
             .Select(p => new TieredProperty(p, p.GetCustomAttribute<TierAttribute>()?.Tier ?? PrivacyTier.Private))
             .ToArray());
+
+    // The tier and owner describe the item for the gateway; they aren't part of what's shown.
+    private static bool IsPrivacyMetadata(string name) => name is nameof(ITiered.Tier) or nameof(IOwned.OwnerId);
 
     private sealed record TieredProperty(PropertyInfo Info, PrivacyTier Tier);
 }
