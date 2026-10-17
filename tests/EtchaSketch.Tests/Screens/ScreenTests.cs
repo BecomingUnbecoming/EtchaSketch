@@ -86,9 +86,15 @@ public sealed class ScreenTests : IDisposable
         Assert.Equal("Ready to add 1 task, 1 finished left out.", import.Summary);
         Assert.Empty(home.MyTasks);
 
+        Assert.True(import.IsChoosing);
         import.ImportCommand.Execute(null);
         Assert.Equal("Added 1 task, 1 finished left out.", import.Summary);
         Assert.False(import.ImportCommand.CanExecute(null));
+
+        // The panel says it is finished, and the list behind it is already up to date.
+        Assert.True(import.IsFinished);
+        Assert.False(import.IsChoosing);
+        Assert.Equal(["Rotate keys"], home.MyTasks.Select(task => task.Title));
 
         import.CloseCommand.Execute(null);
         Assert.Null(home.Import);

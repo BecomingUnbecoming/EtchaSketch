@@ -12,22 +12,39 @@
                     <Button Grid.Column="1" Content="Close" Command="{Binding CloseCommand}" />
                 </Grid>
 
-                <TextBlock Text="Bring in tasks from a file made by another app. They're added as your own private tasks, and you can share any of them afterwards. Finished tasks are left out, and importing the same file again adds nothing twice."
-                           TextWrapping="Wrap" Opacity="0.7" />
+                <StackPanel Spacing="10" IsVisible="{Binding IsFinished}">
+                    <Border Padding="14" CornerRadius="8" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Import finished" FontSize="18" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding Problems}" FontSize="12" Opacity="0.8" TextWrapping="Wrap"
+                                       IsVisible="{Binding Problems, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                            <TextBlock Text="They're on your task list now. It's safe to leave this screen."
+                                       FontSize="12" Opacity="0.7" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+                    <Button Content="Done" Command="{Binding CloseCommand}" Classes="accent" HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center" />
+                </StackPanel>
 
-                <Button x:Name="ChooseFile" Content="Choose file…" Click="ChooseFile_Click" />
-                <TextBox Text="{Binding FileText}" AcceptsReturn="True" TextWrapping="NoWrap" MaxHeight="120"
-                         PlaceholderText="…or paste the file's text here" />
-                <Button Content="Check the file" Command="{Binding PreviewCommand}" />
+                <StackPanel Spacing="10" IsVisible="{Binding IsChoosing}">
+                    <TextBlock Text="Bring in tasks from a file made by another app. They're added as your own private tasks, and you can share any of them afterwards. Finished tasks are left out, and importing the same file again adds nothing twice."
+                               TextWrapping="Wrap" Opacity="0.7" />
 
-                <TextBlock Text="{Binding ErrorMessage}" Foreground="#C42B1C" TextWrapping="Wrap"
-                           IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                <TextBlock Text="{Binding Summary}" FontWeight="SemiBold" TextWrapping="Wrap"
-                           IsVisible="{Binding Summary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                <TextBlock Text="{Binding Problems}" FontSize="12" Opacity="0.8" TextWrapping="Wrap"
-                           IsVisible="{Binding Problems, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    <Button x:Name="ChooseFile" Content="Choose file…" Click="ChooseFile_Click" />
+                    <TextBox Text="{Binding FileText}" AcceptsReturn="True" TextWrapping="NoWrap" MaxHeight="120"
+                             PlaceholderText="…or paste the file's text here" />
+                    <Button Content="Check the file" Command="{Binding PreviewCommand}" />
 
-                <Button Content="Import" Command="{Binding ImportCommand}" Classes="accent" />
+                    <TextBlock Text="{Binding ErrorMessage}" Foreground="#C42B1C" TextWrapping="Wrap"
+                               IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    <TextBlock Text="{Binding Summary}" FontWeight="SemiBold" TextWrapping="Wrap"
+                               IsVisible="{Binding Summary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    <TextBlock Text="{Binding Problems}" FontSize="12" Opacity="0.8" TextWrapping="Wrap"
+                               IsVisible="{Binding Problems, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+                    <Button Content="Import" Command="{Binding ImportCommand}" Classes="accent" />
+                </StackPanel>
             </StackPanel>
         </ScrollViewer>
     </Border>

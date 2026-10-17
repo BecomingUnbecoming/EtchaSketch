@@ -146,7 +146,7 @@ public partial class HomeViewModel : ViewModelBase
         {
             Refresh();
         }
-    });
+    }, imported: Refresh);
 
     [RelayCommand]
     private void OpenSync() => Sync = new SyncViewModel(_session, _household.Id, Synced, () => Sync = null);

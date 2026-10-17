@@ -13,7 +13,7 @@ namespace EtchaSketch.UI.ViewModels;
 /// Brings tasks in from a file made by another app (see docs/import.md): choose the file, read
 /// what it would do, then confirm. Importing the same file twice adds nothing the second time.
 /// </summary>
-public partial class ImportViewModel(AppSession session, Household household, Profile me, Action<bool> close) : ViewModelBase
+public partial class ImportViewModel(AppSession session, Household household, Profile me, Action<bool> close, Action? imported = null) : ViewModelBase
 {
     private IReadOnlyList<ImportedTask>? _tasks;
     private bool _imported;
@@ -35,6 +35,13 @@ public partial class ImportViewModel(AppSession session, Household household, Pr
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ImportCommand))]
     public partial bool CanImport { get; private set; }
+
+    /// <summary>True once the tasks are in. The panel then shows only the result and a Done button.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsChoosing))]
+    public partial bool IsFinished { get; private set; }
+
+    public bool IsChoosing => !IsFinished;
 
     partial void OnFileTextChanged(string value)
     {
@@ -81,6 +88,8 @@ public partial class ImportViewModel(AppSession session, Household household, Pr
         CanImport = false;
         Summary = Describe(result, "Added");
         Problems = Joined(result);
+        IsFinished = true;
+        imported?.Invoke();
     }
 
     [RelayCommand]
