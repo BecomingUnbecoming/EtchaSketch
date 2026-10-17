@@ -34,7 +34,8 @@ public partial class ProfilePickerViewModel : ViewModelBase
     {
         try
         {
-            _session.Households.AddMember(_session.Households.All()[0].Id, NewPersonName);
+            var person = _session.Households.AddMember(_session.Households.All()[0].Id, NewPersonName);
+            _session.Sync?.AddPerson(person.Id);
             NewPersonName = "";
             ErrorMessage = null;
             Load();

@@ -14,6 +14,7 @@ public sealed class SyncScreenTests : IAsyncLifetime
 
     private readonly string _directory = Directory.CreateTempSubdirectory("etchasketch-sync-screens-").FullName;
     private readonly List<MainViewModel> _apps = [];
+    private readonly Dictionary<string, InMemoryKeyStore> _keys = [];
     private SyncServerFixture _server = null!;
 
     public SyncScreenTests() => CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
@@ -35,7 +36,7 @@ public sealed class SyncScreenTests : IAsyncLifetime
     {
         var app = new MainViewModel(new AppEnvironment(
             Path.Combine(_directory, device, "etchasketch.db"),
-            new InMemoryKeyStore(),
+            _keys.TryGetValue(device, out var keys) ? keys : _keys[device] = new InMemoryKeyStore(),
             new FixedClock(new DateTimeOffset(2026, 10, 21, 9, 0, 0, TimeSpan.Zero)),
             server ?? (_ => _server.Client())));
         _apps.Add(app);
@@ -127,7 +128,7 @@ public sealed class SyncScreenTests : IAsyncLifetime
         var phone = Launch("jordy-phone");
         var setup = await TryJoin(phone, code);
 
-        Assert.Null(setup.ErrorMessage);
+        Assert.Null(setup.JoinErrorMessage);
         var home = Assert.IsType<HomeViewModel>(phone.CurrentPage);
         Assert.Equal("Hi, Jordy", home.Greeting);
         Assert.Equal(["Dishes"], home.MyTasks.Select(task => task.Title));
@@ -172,7 +173,7 @@ public sealed class SyncScreenTests : IAsyncLifetime
 
         var setup = await TryJoin(Launch("someone-else"), code);
 
-        Assert.Equal(new PairingCodeNotFoundException().Message, setup.ErrorMessage);
+        Assert.Equal(new PairingCodeNotFoundException().Message, setup.JoinErrorMessage);
         Assert.IsType<SetupViewModel>(_apps[^1].CurrentPage);
     }
 
@@ -181,7 +182,7 @@ public sealed class SyncScreenTests : IAsyncLifetime
     {
         var setup = await TryJoin(Launch("phone"), "ABCD-EFGH");
 
-        Assert.Equal("That isn't a whole pairing code.", setup.ErrorMessage);
+        Assert.Equal("That isn't a whole pairing code.", setup.JoinErrorMessage);
     }
 
     [Fact]

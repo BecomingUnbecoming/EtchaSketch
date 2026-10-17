@@ -1,0 +1,59 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:EtchaSketch.UI.ViewModels"
+             x:Class="EtchaSketch.UI.Views.SyncView"
+             x:DataType="vm:SyncViewModel">
+    <Border MaxWidth="480" Margin="16" Padding="20" CornerRadius="12" VerticalAlignment="Center"
+            Background="{DynamicResource SolidBackgroundFillColorBaseBrush}">
+        <ScrollViewer>
+            <StackPanel Spacing="10">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Text="Sync" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <Button Grid.Column="1" Content="Close" Command="{Binding CloseCommand}" />
+                </Grid>
+
+                <TextBlock Text="Keeps your devices and your household's in step. Everything is locked on this device before it's sent, so the server can't read it."
+                           TextWrapping="Wrap" Opacity="0.7" />
+                <TextBlock Text="{Binding StatusText}" FontWeight="SemiBold" />
+
+                <TextBlock Text="Sync server address" />
+                <TextBox Text="{Binding ServerAddress}" PlaceholderText="http://192.168.1.20:5080" />
+
+                <Button Content="Turn on sync" Command="{Binding TurnOnCommand}" Classes="accent"
+                        IsVisible="{Binding !IsEnabled}" />
+                <Button Content="Sync now" Command="{Binding SyncNowCommand}" IsVisible="{Binding IsEnabled}" />
+
+                <TextBlock Text="{Binding ErrorMessage}" Foreground="#C42B1C" TextWrapping="Wrap"
+                           IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+                <StackPanel Spacing="8" IsVisible="{Binding IsEnabled}">
+                    <Separator />
+                    <TextBlock Text="Add a device" FontWeight="SemiBold" />
+                    <TextBlock Text="Make a one-time code for the person whose device it is. Their device gets the household's shared items and only their own private ones."
+                               TextWrapping="Wrap" FontSize="12" Opacity="0.7" />
+                    <ItemsControl ItemsSource="{Binding Invites}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:PersonInvite">
+                                <Button Content="{Binding Name, StringFormat='For {0}'}" Command="{Binding InviteCommand}" Margin="0,0,8,8" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <Border IsVisible="{Binding HasPairingCode}" Padding="12" CornerRadius="8"
+                            Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+                        <StackPanel Spacing="6">
+                            <SelectableTextBlock Text="{Binding PairingCode}" FontFamily="monospace" FontSize="18"
+                                                 FontWeight="SemiBold" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding PairingHint}" FontSize="12" Opacity="0.7" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </Border>
+</UserControl>
