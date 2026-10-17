@@ -85,7 +85,7 @@ public sealed class TaskRepository(SqliteConnection connection)
 
     /// <summary>
     /// The open tasks one person may see: everything they own, plus everyone's shared tasks. Other
-    /// people's Private tasks are never read out of the database at all.
+    /// people's Private tasks, and the notes on their shared ones, are never read out at all.
     /// </summary>
     public IReadOnlyList<TaskItem> VisibleTo(Guid profileId) => Query(
         $"""
@@ -95,7 +95,9 @@ public sealed class TaskRepository(SqliteConnection connection)
           AND (owner_id = $profile OR tier <= $shared)
         {Order}
         """,
-        ("$profile", profileId.ToString()), ("$shared", (int)PrivacyTier.Household));
+        ("$profile", profileId.ToString()), ("$shared", (int)PrivacyTier.Household))
+        .Select(task => task.OwnerId == profileId ? task : task with { Notes = null })
+        .ToList();
 
     /// <summary>The household's shared open chores, one column per member in joining order, then unassigned.</summary>
     public IReadOnlyList<ChoreColumn> ChoreBoard(Guid householdId)

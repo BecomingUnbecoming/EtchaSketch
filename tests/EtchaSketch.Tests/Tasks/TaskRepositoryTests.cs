@@ -151,6 +151,15 @@ public sealed class TaskRepositoryTests : IDisposable
     }
 
     [Fact]
+    public void Notes_on_someone_elses_shared_chore_are_never_read_out()
+    {
+        _tasks.Add(NewChore("Dishes") with { Notes = "Robin's note to self" });
+
+        Assert.Equal("Robin's note to self", Assert.Single(_tasks.VisibleTo(_robin.Id)).Notes);
+        Assert.Null(Assert.Single(_tasks.VisibleTo(_kai.Id)).Notes);
+    }
+
+    [Fact]
     public void Tasks_are_ordered_by_due_date_then_priority_with_undated_last()
     {
         _tasks.Add(NewTask("someday") with { Priority = TaskPriority.Urgent });

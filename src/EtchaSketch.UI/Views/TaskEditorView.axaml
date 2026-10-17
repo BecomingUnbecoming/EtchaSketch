@@ -1,0 +1,45 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:EtchaSketch.UI.ViewModels"
+             x:Class="EtchaSketch.UI.Views.TaskEditorView"
+             x:DataType="vm:TaskEditorViewModel">
+    <Border MaxWidth="480" Margin="16" Padding="20" CornerRadius="12" VerticalAlignment="Center"
+            Background="{DynamicResource SolidBackgroundFillColorBaseBrush}">
+        <ScrollViewer>
+            <StackPanel Spacing="10">
+                <TextBlock Text="{Binding Heading}" FontSize="20" FontWeight="SemiBold" />
+
+                <TextBox Text="{Binding Title}" PlaceholderText="What needs doing?" />
+                <TextBox Text="{Binding Notes}" PlaceholderText="Notes (only you can see these)" AcceptsReturn="True"
+                         TextWrapping="Wrap" MinHeight="60" IsVisible="{Binding CanEditNotes}" />
+
+                <TextBlock Text="Due" />
+                <CalendarDatePicker SelectedDate="{Binding DueDate}" HorizontalAlignment="Stretch"
+                                    PlaceholderText="No due date" />
+
+                <TextBlock Text="Priority" />
+                <ComboBox ItemsSource="{Binding Priorities}" SelectedItem="{Binding Priority}" HorizontalAlignment="Stretch" />
+
+                <CheckBox IsChecked="{Binding IsShared}" Content="Share with the household as a chore" />
+
+                <TextBlock Text="Repeats" />
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <ComboBox ItemsSource="{Binding RepeatOptions}" SelectedItem="{Binding Repeat}" HorizontalAlignment="Stretch" />
+                    <NumericUpDown Grid.Column="1" Value="{Binding RepeatEvery}" Minimum="1" Maximum="365" Increment="1"
+                                   FormatString="0" IsVisible="{Binding Repeats}" ToolTip.Tip="Every how many" />
+                </Grid>
+
+                <TextBlock Text="Who's doing it" />
+                <ComboBox ItemsSource="{Binding AssigneeOptions}" SelectedItem="{Binding Assignee}" HorizontalAlignment="Stretch" />
+
+                <TextBlock Text="{Binding ErrorMessage}" Foreground="#C42B1C" TextWrapping="Wrap"
+                           IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                    <Button Content="Cancel" Command="{Binding CancelCommand}" />
+                    <Button Content="Save" Command="{Binding SaveCommand}" Classes="accent" />
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </Border>
+</UserControl>

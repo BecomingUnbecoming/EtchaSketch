@@ -1,0 +1,86 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:EtchaSketch.UI.ViewModels"
+             x:Class="EtchaSketch.UI.Views.HomeView"
+             x:DataType="vm:HomeViewModel">
+    <UserControl.DataTemplates>
+        <!-- One task row, used in both the task list and the chore board. -->
+        <DataTemplate x:DataType="vm:TaskRowViewModel">
+            <Border Padding="12" Margin="0,0,0,8" CornerRadius="8"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                    <Button Content="✓" Command="{Binding CompleteCommand}" VerticalAlignment="Center"
+                            ToolTip.Tip="Mark done" />
+                    <StackPanel Grid.Column="1" Spacing="2">
+                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding DueText}" FontSize="12"
+                                   IsVisible="{Binding DueText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                   Classes.overdue="{Binding IsOverdue}" />
+                        <TextBlock Text="{Binding Details}" FontSize="12" Opacity="0.7" TextWrapping="Wrap"
+                                   IsVisible="{Binding Details, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                        <TextBlock Text="{Binding Notes}" FontSize="12" Opacity="0.7" TextWrapping="Wrap"
+                                   IsVisible="{Binding HasNotes}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                        <Button Content="Edit" Command="{Binding EditCommand}" />
+                        <Button Content="Delete" Command="{Binding DeleteCommand}" IsVisible="{Binding CanDelete}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </UserControl.DataTemplates>
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.overdue">
+            <Setter Property="Foreground" Value="#C42B1C" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+    </UserControl.Styles>
+
+    <Grid>
+        <DockPanel Margin="16">
+            <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8" Margin="0,0,0,12">
+                <TextBlock Text="{Binding Greeting}" FontSize="22" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <Button Grid.Column="1" Content="Switch person" Command="{Binding SwitchPersonCommand}" />
+                <Button Grid.Column="2" Content="New task" Command="{Binding NewTaskCommand}" Classes="accent" />
+            </Grid>
+
+            <TabControl>
+                <TabItem Header="My tasks">
+                    <ScrollViewer>
+                        <StackPanel>
+                            <TextBlock Text="Nothing to do. Add a task to get started." Opacity="0.7" Margin="0,12"
+                                       IsVisible="{Binding !MyTasks.Count}" />
+                            <ItemsControl ItemsSource="{Binding MyTasks}" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+                <TabItem Header="Chore board">
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding ChoreColumns}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" Spacing="16" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ChoreColumnViewModel">
+                                    <StackPanel Width="280" Spacing="8">
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="16" />
+                                        <ItemsControl ItemsSource="{Binding Chores}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </TabItem>
+            </TabControl>
+        </DockPanel>
+
+        <!-- The task editor slides over the home screen while it's open. -->
+        <Border IsVisible="{Binding IsEditing}" Background="#80000000">
+            <ContentControl Content="{Binding Editor}" />
+        </Border>
+    </Grid>
+</UserControl>
