@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using EtchaSketch.Core.Notifications;
 using EtchaSketch.Core.Privacy;
 using Microsoft.Data.Sqlite;
@@ -28,6 +30,8 @@ public sealed class NotificationRepository(SqliteConnection connection)
 
         var stored = notification with
         {
+            // The same reminder raised on two devices gets the same id, so sync merges them into one.
+            Id = IdFor(notification.OwnerId, key),
             Tier = notification.Tier < PrivacyTier.Household ? PrivacyTier.Household : notification.Tier,
             DeliverAt = QuietHoursFor(notification.OwnerId)?.DeliveryTime(notification.CreatedAt) ?? notification.CreatedAt,
         };
@@ -94,6 +98,9 @@ public sealed class NotificationRepository(SqliteConnection connection)
             """,
             ("$profile", profileId.ToString()), ("$start", Clock(hours.Start)), ("$end", Clock(hours.End)));
     }
+
+    private static Guid IdFor(Guid recipientId, string key) =>
+        new(SHA256.HashData(Encoding.UTF8.GetBytes($"{recipientId}|{key}")).AsSpan(0, 16));
 
     private List<Notification> Query(string sql, params (string Name, object? Value)[] parameters)
     {
