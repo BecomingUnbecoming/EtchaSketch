@@ -302,11 +302,4 @@ public sealed class ScreenTests : IDisposable
         kai.OpenNotificationsCommand.Execute(null);
         Assert.Equal("Robin assigned Dishes to you", Assert.Single(kai.Notifications!.Items).Title);
     }
-
-    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
-    {
-        public override DateTimeOffset GetUtcNow() => now;
-
-        public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
-    }
 }

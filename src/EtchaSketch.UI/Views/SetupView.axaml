@@ -23,6 +23,23 @@
 
             <Button Content="Get started" Command="{Binding CreateCommand}" HorizontalAlignment="Stretch"
                     HorizontalContentAlignment="Center" Classes="accent" />
+
+            <Separator Margin="0,12" />
+            <TextBlock Text="Joining a household that already uses EtchaSketch?" FontWeight="SemiBold" TextWrapping="Wrap" />
+            <TextBlock Text="On one of its devices, open Sync and make a code for yourself. Then enter it here."
+                       TextWrapping="Wrap" Opacity="0.7" />
+
+            <TextBlock Text="Sync server address" />
+            <TextBox Text="{Binding JoinAddress}" PlaceholderText="http://192.168.1.20:5080" />
+
+            <TextBlock Text="Pairing code" />
+            <TextBox Text="{Binding JoinCode}" PlaceholderText="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX" />
+
+            <TextBlock Text="{Binding JoinErrorMessage}" Foreground="#C42B1C" TextWrapping="Wrap"
+                       IsVisible="{Binding JoinErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+            <Button Content="Join household" Command="{Binding JoinCommand}" HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Center" />
         </StackPanel>
     </ScrollViewer>
 </UserControl>
