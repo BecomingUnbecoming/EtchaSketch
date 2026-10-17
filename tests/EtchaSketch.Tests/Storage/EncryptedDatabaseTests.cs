@@ -1,5 +1,6 @@
 using System.Text;
 using EtchaSketch.Data.Storage;
+using EtchaSketch.Tests.TestSupport;
 using Microsoft.Data.Sqlite;
 
 namespace EtchaSketch.Tests.Storage;
@@ -118,16 +119,5 @@ public sealed class EncryptedDatabaseTests : IDisposable
         using var db = EncryptedDatabase.Open(DatabasePath, _keys);
 
         Assert.False(string.IsNullOrEmpty(Scalar(db, "PRAGMA cipher_version") as string));
-    }
-
-    private sealed class InMemoryKeyStore : IKeyStore
-    {
-        private readonly Dictionary<string, byte[]> _keys = [];
-
-        public byte[]? Load(string name) => _keys.TryGetValue(name, out var key) ? key.ToArray() : null;
-
-        public void Save(string name, byte[] key) => _keys[name] = key.ToArray();
-
-        public void Delete(string name) => _keys.Remove(name);
     }
 }
