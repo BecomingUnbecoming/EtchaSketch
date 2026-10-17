@@ -64,11 +64,42 @@ public sealed class TaskRepositoryTests : IDisposable
             Priority = TaskPriority.High,
             AssigneeId = _robin.Id,
             Recurrence = new Recurrence(RecurrenceFrequency.Monthly, 6),
+            Project = "Health",
+            Labels = ["quick-win", "b-hands"],
+            RemindDaysBefore = 3,
         };
 
         _tasks.Add(task);
 
-        Assert.Equal(task, _tasks.Get(task.Id));
+        var read = _tasks.Get(task.Id)!;
+        // Labels is a list, which records compare by reference, so compare it on its own.
+        Assert.Equal(task with { Labels = [] }, read with { Labels = [] });
+        Assert.Equal(task.Labels, read.Labels);
+    }
+
+    [Fact]
+    public void Project_and_labels_are_tidied_and_checked()
+    {
+        var task = _tasks.Add(NewTask("Tidy") with { Project = "  Home  ", Labels = [" a ", "A", "", "b"] });
+
+        Assert.Equal("Home", task.Project);
+        Assert.Equal(["a", "b"], task.Labels);
+        Assert.Null(_tasks.Add(NewTask("No project") with { Project = "   " }).Project);
+        Assert.Throws<ArgumentException>(() => _tasks.Add(NewTask("Long") with { Project = new string('x', 61) }));
+        Assert.Throws<ArgumentException>(() => _tasks.Add(NewTask("Many") with { Labels = Enumerable.Range(0, 21).Select(i => $"l{i}").ToList() }));
+        Assert.Throws<ArgumentException>(() => _tasks.Add(NewTask("Early") with { RemindDaysBefore = 0 }));
+    }
+
+    [Fact]
+    public void Project_and_labels_follow_the_tasks_privacy()
+    {
+        var shared = _tasks.Add(NewTask("Dishes", tier: PrivacyTier.Household) with { Project = "Chores", Labels = ["kitchen"] });
+        var secret = _tasks.Add(NewTask("Surprise") with { Project = "Gifts", Labels = ["secret"] });
+
+        Assert.Equal(["Dishes"], _tasks.VisibleTo(_kai.Id).Select(task => task.Title));
+        Assert.Equal("Chores", _tasks.VisibleTo(_kai.Id).Single().Project);
+        Assert.Null(PrivacyGateway.ForStudio(shared));
+        Assert.Null(PrivacyGateway.Project(secret, Audience.ForProfile(_kai.Id)));
     }
 
     [Fact]

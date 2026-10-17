@@ -45,7 +45,36 @@ def repeat_of(task):
     return None
 
 
-def convert(task, projects):
+RELATION = {
+    "blocked": "Blocked by",
+    "blocking": "Blocking",
+    "follows": "Follows",
+    "precedes": "Comes before",
+    "duplicates": "Duplicates",
+    "duplicateof": "Duplicate of",
+    "related": "Related",
+    "subtask": "Subtask of",
+    "parenttask": "Parent task",
+}
+
+
+def notes_of(task, titles):
+    """The description, then one line per link to another task, since EtchaSketch has no task links yet."""
+    lines = [task["description"].strip()] if task.get("description") else []
+    for kind, others in (task.get("related_tasks") or {}).items():
+        names = ", ".join(titles.get(other["id"], f"task {other['id']}") for other in others)
+        lines.append(f"{RELATION.get(kind, kind.capitalize())}: {names}")
+    return "\n\n".join(lines) if lines else None
+
+
+def remind_days(task):
+    """Reminders set relative to the due date, as whole days before it (the earliest one)."""
+    days = [-r["relative_period"] // 86400 for r in task.get("reminders") or []
+            if r.get("relative_to") == "due_date" and r.get("relative_period", 0) <= -86400]
+    return max(days) if days else None
+
+
+def convert(task, projects, titles):
     out = {
         "title": task["title"],
         "source": f"vikunja:{task['id']}",
@@ -54,8 +83,10 @@ def convert(task, projects):
         "project": projects.get(task.get("project_id")),
         "labels": [label["title"] for label in task.get("labels") or []],
     }
-    if task.get("description"):
-        out["notes"] = task["description"]
+    if (notes := notes_of(task, titles)):
+        out["notes"] = notes
+    if (days := remind_days(task)):
+        out["remindDaysBefore"] = days
     if task.get("due_date") and task["due_date"] != EPOCH:
         out["due"] = task["due_date"][:10]
     if (repeat := repeat_of(task)):
@@ -69,7 +100,9 @@ def main():
     base, target = sys.argv[1].rstrip("/"), sys.argv[2]
     token = os.environ["VIKUNJA_TOKEN"]
     projects = {p["id"]: p["title"] for p in get(base, token, "/projects")}
-    tasks = [convert(t, projects) for t in fetch_all(base, token, "/tasks")]
+    everything = fetch_all(base, token, "/tasks")
+    titles = {t["id"]: t["title"] for t in everything}
+    tasks = [convert(t, projects, titles) for t in everything]
     with open(target, "w", encoding="utf-8") as file:
         json.dump({"format": "etchasketch-tasks", "version": 1, "tasks": tasks}, file, indent=2, ensure_ascii=False)
     os.chmod(target, 0o600)

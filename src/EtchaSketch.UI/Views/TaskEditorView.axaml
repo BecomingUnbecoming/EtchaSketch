@@ -17,6 +17,16 @@
                 <CalendarDatePicker SelectedDate="{Binding DueDate}" HorizontalAlignment="Stretch"
                                     PlaceholderText="No due date" />
 
+                <TextBlock Text="Remind me" />
+                <ComboBox ItemsSource="{Binding ReminderOptions}" SelectedItem="{Binding Reminder}" HorizontalAlignment="Stretch"
+                          ToolTip.Tip="You're always reminded on the day it's due" />
+
+                <TextBlock Text="Project" />
+                <TextBox Text="{Binding Project}" PlaceholderText="Optional, like Homelab" />
+
+                <TextBlock Text="Labels" />
+                <TextBox Text="{Binding LabelsText}" PlaceholderText="Separated by commas, like quick-win, 15min" />
+
                 <TextBlock Text="Priority" />
                 <ComboBox ItemsSource="{Binding Priorities}" SelectedItem="{Binding Priority}" HorizontalAlignment="Stretch" />
 

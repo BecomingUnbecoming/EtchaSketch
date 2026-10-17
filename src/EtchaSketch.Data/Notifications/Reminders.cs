@@ -65,6 +65,12 @@ public sealed class Reminders(TaskRepository tasks, NotificationRepository notif
         {
             yield return (NotificationKind.DueToday, $"due:{task.Id}:{dueKey}", $"{task.Title} is due today", null);
         }
+        else if (due > today && task.RemindDaysBefore is { } early && today >= due.AddDays(-early))
+        {
+            var days = due.DayNumber - today.DayNumber;
+            yield return (NotificationKind.DueSoon, $"soon:{task.Id}:{dueKey}", $"{task.Title} is due {(days == 1 ? "tomorrow" : $"in {days} days")}",
+                $"Due {due.ToString("ddd d MMM", CultureInfo.CurrentCulture)}");
+        }
         else if (due < today)
         {
             yield return (NotificationKind.Overdue, $"overdue:{task.Id}:{dueKey}", $"{task.Title} is overdue",

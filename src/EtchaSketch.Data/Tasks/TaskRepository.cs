@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using EtchaSketch.Core.Privacy;
 using EtchaSketch.Core.Tasks;
 using Microsoft.Data.Sqlite;
@@ -9,10 +10,15 @@ namespace EtchaSketch.Data.Tasks;
 public sealed class TaskRepository(SqliteConnection connection)
 {
     private const string Columns =
-        "id, household_id, owner_id, title, notes, due, priority, assignee_id, recurrence_frequency, recurrence_interval, completed_at, tier";
+        "id, household_id, owner_id, title, notes, due, priority, assignee_id, recurrence_frequency, recurrence_interval, completed_at, tier, project, labels, remind_days_before";
 
     // Open tasks first by due date (undated last), then most urgent first, then oldest first.
     private const string Order = "ORDER BY due IS NULL, due, priority DESC, rowid";
+
+    public const int MaxProjectLength = 60;
+    public const int MaxLabels = 20;
+    public const int MaxLabelLength = 40;
+    public const int MaxRemindDays = 60;
 
     private static readonly string ParameterList = string.Join(", ", Columns.Split(", ").Select(column => "$" + column));
 
@@ -32,7 +38,8 @@ public sealed class TaskRepository(SqliteConnection connection)
             UPDATE tasks SET household_id = $household_id, owner_id = $owner_id, title = $title, notes = $notes,
                 due = $due, priority = $priority, assignee_id = $assignee_id,
                 recurrence_frequency = $recurrence_frequency, recurrence_interval = $recurrence_interval,
-                completed_at = $completed_at, tier = $tier
+                completed_at = $completed_at, tier = $tier, project = $project, labels = $labels,
+                remind_days_before = $remind_days_before
             WHERE id = $id
             """,
             Parameters(task));
@@ -141,7 +148,28 @@ public sealed class TaskRepository(SqliteConnection connection)
             }
         }
 
-        return task with { Title = title };
+        var project = task.Project?.Trim();
+        if (project is { Length: > MaxProjectLength })
+        {
+            throw new ArgumentException($"A project name can be at most {MaxProjectLength} characters.", nameof(task));
+        }
+
+        var labels = (task.Labels ?? [])
+            .Select(label => label?.Trim() ?? "")
+            .Where(label => label.Length > 0)
+            .DistinctBy(label => label, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (labels.Count > MaxLabels || labels.Any(label => label.Length > MaxLabelLength))
+        {
+            throw new ArgumentException($"Use at most {MaxLabels} labels of up to {MaxLabelLength} characters each.", nameof(task));
+        }
+
+        if (task.RemindDaysBefore is < 1 or > MaxRemindDays)
+        {
+            throw new ArgumentException($"An early reminder is 1 to {MaxRemindDays} days before the due date.", nameof(task));
+        }
+
+        return task with { Title = title, Project = string.IsNullOrEmpty(project) ? null : project, Labels = labels };
     }
 
     private List<Guid> MemberIds(Guid householdId)
@@ -172,6 +200,9 @@ public sealed class TaskRepository(SqliteConnection connection)
         ("$recurrence_interval", task.Recurrence?.Interval),
         ("$completed_at", task.CompletedAt is { } at ? Text(at) : null),
         ("$tier", (int)task.Tier),
+        ("$project", task.Project),
+        ("$labels", task.Labels.Count == 0 ? null : JsonSerializer.Serialize(task.Labels)),
+        ("$remind_days_before", task.RemindDaysBefore),
     ];
 
     private List<TaskItem> Query(string sql, params (string Name, object? Value)[] parameters)
@@ -196,6 +227,9 @@ public sealed class TaskRepository(SqliteConnection connection)
                     : new Recurrence(Enum.Parse<RecurrenceFrequency>(reader.GetString(8)), reader.GetInt32(9)),
                 CompletedAt = reader.IsDBNull(10) ? null : ParseTime(reader.GetString(10)),
                 Tier = (PrivacyTier)reader.GetInt32(11),
+                Project = reader.IsDBNull(12) ? null : reader.GetString(12),
+                Labels = reader.IsDBNull(13) ? [] : JsonSerializer.Deserialize<List<string>>(reader.GetString(13)) ?? [],
+                RemindDaysBefore = reader.IsDBNull(14) ? null : reader.GetInt32(14),
             });
         }
 

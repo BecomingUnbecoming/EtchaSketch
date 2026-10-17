@@ -34,7 +34,7 @@ internal sealed record SyncTable(
         new("tasks",
             """
             SELECT id, household_id, owner_id, title, due, priority, assignee_id, recurrence_frequency,
-                   recurrence_interval, completed_at, tier, created_at
+                   recurrence_interval, completed_at, tier, created_at, project, labels, remind_days_before
             FROM tasks
             """,
             ["id"],

@@ -40,6 +40,15 @@ public partial class TaskEditorViewModel : ViewModelBase
         Repeat = RepeatOptions.Single(option => option.Frequency == existing?.Recurrence?.Frequency);
         RepeatEvery = existing?.Recurrence?.Interval ?? 1;
         Assignee = AssigneeOptions.Single(option => option.ProfileId == existing?.AssigneeId);
+        Project = existing?.Project;
+        LabelsText = existing is null ? null : string.Join(", ", existing.Labels);
+
+        // Days other than the usual ones (from an import, say) stay available rather than being lost.
+        ReminderOptions =
+        [
+            .. new[] { (int?)null, 1, 2, 3, 7 }.Union([existing?.RemindDaysBefore]).OrderBy(days => days ?? 0).Select(RemindOption.For),
+        ];
+        Reminder = ReminderOptions.Single(option => option.Days == existing?.RemindDaysBefore);
     }
 
     public string Heading => _existing is null ? "New task" : "Edit task";
@@ -86,6 +95,19 @@ public partial class TaskEditorViewModel : ViewModelBase
     [ObservableProperty]
     public partial AssigneeOption Assignee { get; set; }
 
+    /// <summary>A group for the task, like "Homelab".</summary>
+    [ObservableProperty]
+    public partial string? Project { get; set; }
+
+    /// <summary>Labels separated by commas, like "quick-win, b-hands".</summary>
+    [ObservableProperty]
+    public partial string? LabelsText { get; set; }
+
+    public IReadOnlyList<RemindOption> ReminderOptions { get; }
+
+    [ObservableProperty]
+    public partial RemindOption Reminder { get; set; }
+
     [ObservableProperty]
     public partial string? ErrorMessage { get; private set; }
 
@@ -106,6 +128,9 @@ public partial class TaskEditorViewModel : ViewModelBase
                     ? new Recurrence(frequency, (int)Math.Max(1, RepeatEvery ?? 1))
                     : null,
                 AssigneeId = Assignee.ProfileId,
+                Project = Project,
+                Labels = (LabelsText ?? "").Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
+                RemindDaysBefore = Reminder.Days,
             };
 
             if (_existing is null)
@@ -136,5 +161,18 @@ public sealed record RepeatOption(string Label, RecurrenceFrequency? Frequency)
 
 public sealed record AssigneeOption(string Label, Guid? ProfileId)
 {
+    public override string ToString() => Label;
+}
+
+public sealed record RemindOption(string Label, int? Days)
+{
+    public static RemindOption For(int? days) => days switch
+    {
+        null => new("No early reminder", null),
+        1 => new("A day before", 1),
+        7 => new("A week before", 7),
+        var n => new($"{n} days before", n),
+    };
+
     public override string ToString() => Label;
 }

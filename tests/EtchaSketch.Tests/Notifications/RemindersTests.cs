@@ -160,4 +160,32 @@ public sealed class RemindersTests : IDisposable
 
         Assert.Empty(FeedOf(_robin));
     }
+
+    [Theory]
+    [InlineData(1, "Rotate keys is due tomorrow")]
+    [InlineData(3, "Rotate keys is due in 3 days")]
+    public void An_early_reminder_comes_once_as_the_day_approaches(int daysAway, string title)
+    {
+        _tasks.Add(new TaskItem
+        {
+            HouseholdId = _home.Id,
+            OwnerId = _robin.Id,
+            Title = "Rotate keys",
+            Due = Today.AddDays(daysAway),
+            RemindDaysBefore = 3,
+        });
+
+        Assert.Equal(1, _reminders.Check(_home, Wednesday));
+        Assert.Equal(0, _reminders.Check(_home, Wednesday));
+        Assert.Equal(title, FeedOf(_robin).Single().Title);
+    }
+
+    [Fact]
+    public void No_early_reminder_comes_before_its_time_or_when_none_was_asked_for()
+    {
+        _tasks.Add(new TaskItem { HouseholdId = _home.Id, OwnerId = _robin.Id, Title = "Far off", Due = Today.AddDays(4), RemindDaysBefore = 3 });
+        _tasks.Add(new TaskItem { HouseholdId = _home.Id, OwnerId = _robin.Id, Title = "Not asked", Due = Today.AddDays(1) });
+
+        Assert.Equal(0, _reminders.Check(_home, Wednesday));
+    }
 }
