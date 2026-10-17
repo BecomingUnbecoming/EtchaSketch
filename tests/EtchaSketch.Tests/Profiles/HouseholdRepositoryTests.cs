@@ -93,6 +93,21 @@ public sealed class HouseholdRepositoryTests : IDisposable
     }
 
     [Fact]
+    public void Households_on_this_device_can_be_listed_and_found_from_a_member()
+    {
+        using var db = Open();
+        var repository = new HouseholdRepository(db);
+        Assert.Empty(repository.All());
+
+        var home = repository.Create("Home", "Lacy");
+        var jordy = repository.AddMember(home.Id, "Jordy");
+
+        Assert.Equal([home.Id], repository.All().Select(household => household.Id));
+        Assert.Equal(home.Id, repository.HouseholdOf(jordy.Id)!.Id);
+        Assert.Null(repository.HouseholdOf(Guid.NewGuid()));
+    }
+
+    [Fact]
     public void Current_profile_must_exist()
     {
         using var db = Open();

@@ -17,6 +17,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\EtchaSketch.Core\EtchaSketch.Core.csproj" />
     <ProjectReference Include="..\..\src\EtchaSketch.Data\EtchaSketch.Data.csproj" />
+    <ProjectReference Include="..\..\src\EtchaSketch.UI\EtchaSketch.UI.csproj" />
   </ItemGroup>
 
   <ItemGroup>
