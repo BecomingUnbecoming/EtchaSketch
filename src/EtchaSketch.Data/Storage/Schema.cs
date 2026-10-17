@@ -33,6 +33,35 @@ public static class Schema
             value TEXT NOT NULL
         );
         """,
+
+        // 2: tasks and chores, and who finished them when.
+        """
+        CREATE TABLE tasks (
+            id TEXT PRIMARY KEY,
+            household_id TEXT NOT NULL REFERENCES households (id),
+            owner_id TEXT NOT NULL REFERENCES profiles (id),
+            title TEXT NOT NULL,
+            notes TEXT,
+            due TEXT,
+            priority INTEGER NOT NULL,
+            assignee_id TEXT REFERENCES profiles (id),
+            recurrence_frequency TEXT,
+            recurrence_interval INTEGER,
+            completed_at TEXT,
+            tier INTEGER NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX tasks_by_household ON tasks (household_id, completed_at);
+
+        CREATE TABLE task_completions (
+            task_id TEXT NOT NULL REFERENCES tasks (id) ON DELETE CASCADE,
+            profile_id TEXT NOT NULL REFERENCES profiles (id),
+            completed_at TEXT NOT NULL
+        );
+
+        CREATE INDEX task_completions_by_task ON task_completions (task_id);
+        """,
     ];
 
     /// <summary>The version a fully upgraded database reports.</summary>
