@@ -1,0 +1,30 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:EtchaSketch.UI.ViewModels"
+             x:Class="EtchaSketch.UI.Views.UnlockView"
+             x:DataType="vm:UnlockViewModel">
+    <ScrollViewer>
+        <StackPanel Margin="24" Spacing="12" MaxWidth="360" VerticalAlignment="Center">
+            <TextBlock Text="{Binding Name, StringFormat='{}{0}, enter your PIN'}" FontSize="22" FontWeight="SemiBold"
+                       TextWrapping="Wrap" />
+
+            <TextBox x:Name="PinBox" Text="{Binding Pin}" PasswordChar="•" PlaceholderText="PIN"
+                     TextInputOptions.ContentType="Pin" FontSize="20" HorizontalContentAlignment="Center">
+                <TextBox.KeyBindings>
+                    <KeyBinding Gesture="Enter" Command="{Binding UnlockCommand}" />
+                </TextBox.KeyBindings>
+            </TextBox>
+
+            <TextBlock Text="{Binding ErrorMessage}" Foreground="#C42B1C" TextWrapping="Wrap"
+                       IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+            <Button Content="Unlock" Command="{Binding UnlockCommand}" Classes="accent"
+                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+            <Button Content="Use fingerprint or screen lock" Command="{Binding DeviceUnlockCommand}"
+                    IsVisible="{Binding CanUseDeviceUnlock}"
+                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+            <Button Content="Switch person" Command="{Binding SwitchPersonCommand}"
+                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

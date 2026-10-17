@@ -18,18 +18,37 @@ public partial class HomeViewModel : ViewModelBase
     private Household _household;
     private readonly Profile _me;
     private readonly Action _switchPerson;
+    private readonly Action _lock;
     private DateOnly _shownDay;
 
-    public HomeViewModel(AppSession session, Household household, Profile me, Action switchPerson)
+    public HomeViewModel(AppSession session, Household household, Profile me, Action switchPerson, Action lockNow)
     {
         _session = session;
         _household = household;
         _me = me;
         _switchPerson = switchPerson;
+        _lock = lockNow;
+        CanLock = session.Locks.HasPin(me.Id);
         Refresh();
     }
 
     public string Greeting => $"Hi, {_me.DisplayName}";
+
+    /// <summary>The person whose home screen this is.</summary>
+    public Profile Me => _me;
+
+    public Household Household => _household;
+
+    /// <summary>Whether this person has a PIN, so "Lock" has something to ask for.</summary>
+    [ObservableProperty]
+    public partial bool CanLock { get; private set; }
+
+    /// <summary>The PIN settings panel, or null when it is closed.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsShowingLockSettings))]
+    public partial LockSettingsViewModel? LockSettings { get; private set; }
+
+    public bool IsShowingLockSettings => LockSettings is not null;
 
     /// <summary>Your own tasks plus everyone's shared chores.</summary>
     public ObservableCollection<TaskRowViewModel> MyTasks { get; } = [];
@@ -68,6 +87,18 @@ public partial class HomeViewModel : ViewModelBase
 
     [RelayCommand]
     private void SwitchPerson() => _switchPerson();
+
+    [RelayCommand]
+    private void Lock() => _lock();
+
+    [RelayCommand]
+    private void OpenLockSettings() => LockSettings = new LockSettingsViewModel(_session, _me, CloseLockSettings);
+
+    private void CloseLockSettings()
+    {
+        LockSettings = null;
+        CanLock = _session.Locks.HasPin(_me.Id);
+    }
 
     [RelayCommand]
     private void OpenNotifications()
