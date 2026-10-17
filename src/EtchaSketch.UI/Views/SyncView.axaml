@@ -53,6 +53,19 @@
                         </StackPanel>
                     </Border>
                 </StackPanel>
+
+                <StackPanel Spacing="8" IsVisible="{Binding IsEnabled}">
+                    <Separator />
+                    <TextBlock Text="Recovery key" FontWeight="SemiBold" />
+                    <TextBlock Text="The server's copy can only be opened with keys that live on your devices. Lock them under a passphrase and keep the result somewhere safe, such as your password manager. If every device is lost, it's the only way back. Keep the passphrase separate from the key."
+                               TextWrapping="Wrap" FontSize="12" Opacity="0.7" />
+                    <TextBox Text="{Binding RecoveryPassphrase}" PasswordChar="•" PlaceholderText="A passphrase of at least 12 characters" />
+                    <Button Content="Make recovery key" Command="{Binding MakeRecoveryKeyCommand}" />
+                    <Border IsVisible="{Binding HasRecoveryKey}" Padding="12" CornerRadius="8"
+                            Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+                        <SelectableTextBlock Text="{Binding RecoveryKeyText}" FontFamily="monospace" FontSize="12" TextWrapping="Wrap" />
+                    </Border>
+                </StackPanel>
             </StackPanel>
         </ScrollViewer>
     </Border>

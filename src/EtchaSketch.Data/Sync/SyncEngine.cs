@@ -106,20 +106,66 @@ public sealed class SyncEngine(SqliteConnection connection, ISyncServer server, 
         var bundle = JsonSerializer.Deserialize<PairingBundle>(code.Open(sealedBundle))
                      ?? throw new InvalidDataException("The pairing held no keys.");
 
-        foreach (var (scope, key) in bundle.Keys)
+        return await TakeAsync(bundle.ProfileId, bundle.Keys, cancellationToken);
+    }
+
+    /// <summary>
+    /// Locks the keys this device holds under a passphrase, as text to keep somewhere safe. If every
+    /// device is lost, this is the only way back into what the server holds.
+    /// </summary>
+    /// <exception cref="ArgumentException">The passphrase is too short.</exception>
+    public string CreateRecoveryKey(string passphrase, int iterations = RecoveryKey.DefaultIterations)
+    {
+        var profileId = new HouseholdRepository(connection).CurrentProfileId()
+                        ?? throw new InvalidOperationException("Pick who is using this device first.");
+        var keys = new Dictionary<string, byte[]>();
+        foreach (var scope in HeldScopes())
+        {
+            keys[scope] = KeyFor(scope)!;
+        }
+
+        if (keys.Count == 0)
+        {
+            throw new InvalidOperationException("Sync is off, so there are no keys to keep. Turn on sync first.");
+        }
+
+        return RecoveryKey.Create(passphrase, new RecoveryContents(profileId, keys), iterations);
+    }
+
+    /// <summary>
+    /// Brings a household back on an empty device from a recovery key: takes the keys, fetches
+    /// everything they open and makes this device the person it was made on. Returns that profile id.
+    /// </summary>
+    /// <exception cref="FormatException">The text isn't a whole recovery key.</exception>
+    /// <exception cref="CryptographicException">The passphrase is wrong.</exception>
+    public async Task<Guid> RestoreAsync(string recoveryKey, string passphrase, CancellationToken cancellationToken = default)
+    {
+        var contents = RecoveryKey.Open(passphrase, recoveryKey);
+        return await TakeAsync(contents.ProfileId, contents.Keys, cancellationToken);
+    }
+
+    private async Task<Guid> TakeAsync(Guid profileId, IReadOnlyDictionary<string, byte[]> keys, CancellationToken cancellationToken)
+    {
+        var households = new HouseholdRepository(connection);
+        if (households.All().Count > 0)
+        {
+            throw new InvalidOperationException("This device already has a household, so it can't join another.");
+        }
+
+        foreach (var (scope, key) in keys)
         {
             if (!(scope.StartsWith(SyncScopes.HouseholdPrefix, StringComparison.Ordinal) || scope.StartsWith(SyncScopes.PersonPrefix, StringComparison.Ordinal))
                 || key.Length != 32)
             {
-                throw new InvalidDataException("The pairing held a key this app doesn't recognise.");
+                throw new InvalidDataException("The keys held one this app doesn't recognise.");
             }
 
             Execute("INSERT INTO sync_keys (scope, key) VALUES ($scope, $key) ON CONFLICT (scope) DO NOTHING", ("$scope", scope), ("$key", key));
         }
 
         await SyncAsync(cancellationToken);
-        households.SetCurrentProfile(bundle.ProfileId);
-        return bundle.ProfileId;
+        households.SetCurrentProfile(profileId);
+        return profileId;
     }
 
     public async Task<SyncResult> SyncAsync(CancellationToken cancellationToken = default)

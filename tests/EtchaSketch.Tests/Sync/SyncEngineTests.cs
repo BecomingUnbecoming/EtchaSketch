@@ -96,6 +96,56 @@ public sealed class SyncEngineTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_recovery_key_brings_everything_back_on_an_empty_device_after_every_device_is_lost()
+    {
+        Add(_desktop, "Book dentist", notes: "ask about the crown");
+        Add(_desktop, "Dishes", PrivacyTier.Household, assignee: _kai);
+        await _desktop.Sync.SyncAsync();
+        var recoveryKey = _desktop.Sync.CreateRecoveryKey("a long passphrase", iterations: 1_000);
+
+        // Every device is gone; only the server's copy and the saved text remain.
+        var replacement = NewDevice("robin-new-pc");
+        var profileId = await replacement.Sync.RestoreAsync(recoveryKey, "a long passphrase");
+
+        Assert.Equal(_robin.Id, profileId);
+        Assert.Equal(_robin.Id, replacement.Households.CurrentProfileId());
+        Assert.Equal(["Book dentist", "Dishes"], TitlesFor(replacement, _robin));
+        Assert.Equal("ask about the crown", replacement.Tasks.VisibleTo(_robin.Id).Single(task => task.Title == "Book dentist").Notes);
+    }
+
+    [Fact]
+    public async Task A_wrong_passphrase_restores_nothing()
+    {
+        await _desktop.Sync.SyncAsync();
+        var recoveryKey = _desktop.Sync.CreateRecoveryKey("a long passphrase", iterations: 1_000);
+
+        var replacement = NewDevice("robin-new-pc");
+        await Assert.ThrowsAnyAsync<System.Security.Cryptography.CryptographicException>(() => replacement.Sync.RestoreAsync(recoveryKey, "not the passphrase"));
+
+        Assert.Empty(replacement.Households.All());
+    }
+
+    [Fact]
+    public async Task A_device_that_already_has_a_household_refuses_a_recovery_key()
+    {
+        var recoveryKey = _desktop.Sync.CreateRecoveryKey("a long passphrase", iterations: 1_000);
+        var other = NewDevice("other");
+        other.Households.Create("Other home", "Someone");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => other.Sync.RestoreAsync(recoveryKey, "a long passphrase"));
+    }
+
+    [Fact]
+    public void Sync_off_has_no_keys_to_keep()
+    {
+        var lonely = NewDevice("lonely");
+        var made = lonely.Households.Create("Home", "Robin");
+        lonely.Households.SetCurrentProfile(made.Members[0].Id);
+
+        Assert.Throws<InvalidOperationException>(() => lonely.Sync.CreateRecoveryKey("a long passphrase", iterations: 1_000));
+    }
+
+    [Fact]
     public async Task Kais_phone_never_receives_robins_private_tasks_or_notes()
     {
         Add(_desktop, "Surprise party for Kai", notes: "the bakery on 5th");

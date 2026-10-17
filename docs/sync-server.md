@@ -49,8 +49,22 @@ Plain `http://` is fine on your home network or VPN, because everything is locke
 sent. If you already run a reverse proxy with HTTPS, you can put the server behind it and use the
 `https://` address instead.
 
+## Recovery key
+
+The server's copy can only be opened with keys that live on your devices. To make sure you can
+always get back in, open **Sync** and choose **Make recovery key**. Enter a passphrase of at
+least 12 characters. You get a block of text starting with `ESKEY1-`: save it somewhere safe,
+such as a note in your password manager, and keep the passphrase somewhere separate from it.
+
+If every device is lost, install the app on a new one. On the welcome screen, enter the server's
+address under **Joining a household**, then fill in **Lost every device?** with the key and the
+passphrase. Your household comes back with everything the server held.
+
+Make a new key whenever you add a person to the household, since a key only holds the keys that
+existed when it was made.
+
 ## Backups
 
 Back up the `etchasketch-sync` volume if you like, but remember the server's copy can only be
-opened with keys that live on your devices. Keep at least one device that's set up. If every
+opened with keys that live on your devices. Keep at least one device that's set up, and keep a recovery key. Without both, if every
 device is lost, the server's copy can't be read by anyone, including you.

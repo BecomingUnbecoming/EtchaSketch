@@ -53,6 +53,17 @@ public partial class SyncViewModel : ViewModelBase
 
     public bool HasPairingCode => PairingCode is not null;
 
+    /// <summary>A passphrase to lock the recovery key with…</summary>
+    [ObservableProperty]
+    public partial string RecoveryPassphrase { get; set; } = "";
+
+    /// <summary>…and the key it makes, to keep somewhere safe.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRecoveryKey))]
+    public partial string? RecoveryKeyText { get; private set; }
+
+    public bool HasRecoveryKey => RecoveryKeyText is not null;
+
     /// <summary>One "Add a device" button per person, once sync is on.</summary>
     public ObservableCollection<PersonInvite> Invites { get; } = [];
 
@@ -74,6 +85,14 @@ public partial class SyncViewModel : ViewModelBase
         {
             _synced(result);
         }
+    }, () => _session.SyncServerAddress);
+
+    [RelayCommand]
+    private Task MakeRecoveryKey() => Run(() =>
+    {
+        RecoveryKeyText = _session.CreateRecoveryKey(RecoveryPassphrase);
+        RecoveryPassphrase = "";
+        return Task.CompletedTask;
     }, () => _session.SyncServerAddress);
 
     [RelayCommand]
