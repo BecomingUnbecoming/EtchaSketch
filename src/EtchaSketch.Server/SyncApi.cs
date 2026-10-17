@@ -8,6 +8,8 @@ public static partial class SyncApi
 {
     public static WebApplication MapSyncApi(this WebApplication app)
     {
+        app.MapGet("/health", () => "ok");
+
         app.MapPost("/v1/streams/{streamId}/changes", (string streamId, PushRequest body, HttpRequest request, SyncStore store) =>
         {
             if (!StreamId().IsMatch(streamId))
@@ -20,8 +22,14 @@ public static partial class SyncApi
                 return Results.Unauthorized();
             }
 
-            return store.Push(streamId, token, body.Changes) ? Results.NoContent() : Results.StatusCode(StatusCodes.Status403Forbidden);
-        });
+            return store.Push(streamId, token, body.Changes) switch
+            {
+                PushResult.Stored => Results.NoContent(),
+                PushResult.Denied => Results.StatusCode(StatusCodes.Status403Forbidden),
+                PushResult.TooLarge => Results.StatusCode(StatusCodes.Status413PayloadTooLarge),
+                _ => Results.StatusCode(StatusCodes.Status507InsufficientStorage),
+            };
+        }).RequireRateLimiting(SyncRateLimits.General);
 
         app.MapGet("/v1/streams/{streamId}/changes", (string streamId, long? after, HttpRequest request, SyncStore store) =>
         {
@@ -38,7 +46,7 @@ public static partial class SyncApi
             return store.Pull(streamId, token, after ?? 0) is { } page
                 ? Results.Ok(page)
                 : Results.StatusCode(StatusCodes.Status403Forbidden);
-        });
+        }).RequireRateLimiting(SyncRateLimits.General);
 
         app.MapPut("/v1/pairings/{pairingId}", (string pairingId, PairingRequest body, SyncStore store) =>
         {
@@ -47,8 +55,14 @@ public static partial class SyncApi
                 return Results.BadRequest();
             }
 
-            return store.PutPairing(pairingId, body.Data) ? Results.NoContent() : Results.Conflict();
-        });
+            return store.PutPairing(pairingId, body.Data) switch
+            {
+                PairingResult.Stored => Results.NoContent(),
+                PairingResult.Taken => Results.Conflict(),
+                PairingResult.TooLarge => Results.StatusCode(StatusCodes.Status413PayloadTooLarge),
+                _ => Results.StatusCode(StatusCodes.Status507InsufficientStorage),
+            };
+        }).RequireRateLimiting(SyncRateLimits.Pairing);
 
         app.MapPost("/v1/pairings/{pairingId}/claim", (string pairingId, SyncStore store) =>
         {
@@ -58,7 +72,7 @@ public static partial class SyncApi
             }
 
             return store.ClaimPairing(pairingId) is { } data ? Results.Ok(new PairingRequest(data)) : Results.NotFound();
-        });
+        }).RequireRateLimiting(SyncRateLimits.Pairing);
 
         return app;
     }

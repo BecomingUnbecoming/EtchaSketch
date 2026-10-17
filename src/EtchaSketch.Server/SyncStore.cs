@@ -19,13 +19,15 @@ public sealed class SyncStore : IDisposable
 
     private readonly SqliteConnection _connection;
     private readonly TimeProvider _clock;
+    private readonly SyncLimits _limits;
     private readonly Lock _gate = new();
     private bool _disposed;
 
-    public SyncStore(string path, TimeProvider clock)
+    public SyncStore(string path, TimeProvider clock, SyncLimits? limits = null)
     {
         SQLitePCL.Batteries_V2.Init();
         _clock = clock;
+        _limits = limits ?? new SyncLimits();
         _connection = new SqliteConnection(new SqliteConnectionStringBuilder
         {
             DataSource = path,
@@ -58,20 +60,36 @@ public sealed class SyncStore : IDisposable
 
     /// <summary>
     /// Appends changes to a stream. The first device to write a stream sets its token; after that
-    /// only the same token may use it. Returns false when the token doesn't match.
+    /// only the same token may use it. Nothing is stored unless the whole push fits the limits.
     /// </summary>
-    public bool Push(string streamId, string accessToken, IReadOnlyList<byte[]> changes)
+    public PushResult Push(string streamId, string accessToken, IReadOnlyList<byte[]> changes)
     {
+        if (changes.Count > _limits.MaxChangesPerPush || changes.Any(change => change.Length > _limits.MaxChangeBytes))
+        {
+            return PushResult.TooLarge;
+        }
+
         lock (_gate)
         {
             using var transaction = _connection.BeginTransaction();
             switch (Check(streamId, accessToken))
             {
                 case Access.Denied:
-                    return false;
+                    return PushResult.Denied;
                 case Access.Unknown:
+                    if (Convert.ToInt64(Scalar("SELECT COUNT(*) FROM streams"), CultureInfo.InvariantCulture) >= _limits.MaxStreams)
+                    {
+                        return PushResult.NoRoom;
+                    }
+
                     Execute("INSERT INTO streams (id, token_hash) VALUES ($id, $hash)", ("$id", streamId), ("$hash", Hash(accessToken)));
                     break;
+            }
+
+            var stored = Convert.ToInt64(Scalar("SELECT COALESCE(SUM(LENGTH(data)), 0) FROM changes WHERE stream_id = $id", ("$id", streamId)), CultureInfo.InvariantCulture);
+            if (stored + changes.Sum(change => (long)change.Length) > _limits.MaxStreamBytes)
+            {
+                return PushResult.NoRoom;
             }
 
             foreach (var change in changes)
@@ -80,7 +98,7 @@ public sealed class SyncStore : IDisposable
             }
 
             transaction.Commit();
-            return true;
+            return PushResult.Stored;
         }
     }
 
@@ -112,16 +130,26 @@ public sealed class SyncStore : IDisposable
         }
     }
 
-    /// <summary>Leaves sealed keys for a new device for fifteen minutes. Returns false if the id is taken.</summary>
-    public bool PutPairing(string pairingId, byte[] data)
+    /// <summary>Leaves sealed keys for a new device for fifteen minutes, unless the id is taken or too many are waiting.</summary>
+    public PairingResult PutPairing(string pairingId, byte[] data)
     {
+        if (data.Length > _limits.MaxChangeBytes)
+        {
+            return PairingResult.TooLarge;
+        }
+
         lock (_gate)
         {
             RemoveExpiredPairings();
+            if (Convert.ToInt64(Scalar("SELECT COUNT(*) FROM pairings"), CultureInfo.InvariantCulture) >= _limits.MaxPendingPairings)
+            {
+                return PairingResult.Full;
+            }
+
             using var command = Command(
                 "INSERT INTO pairings (id, data, expires_at) VALUES ($id, $data, $expires) ON CONFLICT (id) DO NOTHING",
                 ("$id", pairingId), ("$data", data), ("$expires", Text(_clock.GetUtcNow() + PairingLifetime)));
-            return command.ExecuteNonQuery() == 1;
+            return command.ExecuteNonQuery() == 1 ? PairingResult.Stored : PairingResult.Taken;
         }
     }
 
@@ -159,6 +187,12 @@ public sealed class SyncStore : IDisposable
         };
     }
 
+    private object? Scalar(string sql, params (string Name, object Value)[] parameters)
+    {
+        using var command = Command(sql, parameters);
+        return command.ExecuteScalar();
+    }
+
     private void RemoveExpiredPairings() =>
         Execute("DELETE FROM pairings WHERE expires_at <= $now", ("$now", Text(_clock.GetUtcNow())));
 
@@ -190,4 +224,22 @@ public sealed class SyncStore : IDisposable
         Allowed,
         Denied,
     }
+}
+
+/// <summary>What happened to a push.</summary>
+public enum PushResult
+{
+    Stored,
+    Denied,
+    TooLarge,
+    NoRoom,
+}
+
+/// <summary>What happened to a new-device code left on the server.</summary>
+public enum PairingResult
+{
+    Stored,
+    Taken,
+    TooLarge,
+    Full,
 }

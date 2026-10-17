@@ -32,6 +32,7 @@ public sealed class HttpSyncServer(HttpClient http) : ISyncServer
     public async Task PutPairingAsync(string pairingId, byte[] sealedKeys, CancellationToken cancellationToken = default)
     {
         using var response = await http.PutAsJsonAsync($"v1/pairings/{pairingId}", new PairingRequest(sealedKeys), cancellationToken);
+        EnsureNotRefused(response);
         response.EnsureSuccessStatusCode();
     }
 
@@ -43,6 +44,7 @@ public sealed class HttpSyncServer(HttpClient http) : ISyncServer
             return null;
         }
 
+        EnsureNotRefused(response);
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<PairingRequest>(cancellationToken))?.Data;
     }
@@ -54,6 +56,18 @@ public sealed class HttpSyncServer(HttpClient http) : ISyncServer
             throw new SyncAccessDeniedException(streamId);
         }
 
+        EnsureNotRefused(response);
         response.EnsureSuccessStatusCode();
+    }
+
+    private static void EnsureNotRefused(HttpResponseMessage response)
+    {
+        switch (response.StatusCode)
+        {
+            case HttpStatusCode.TooManyRequests:
+                throw new SyncServerRefusedException("The sync server is getting too many requests from this device. Wait a minute and try again.");
+            case HttpStatusCode.RequestEntityTooLarge or HttpStatusCode.InsufficientStorage:
+                throw new SyncServerRefusedException("The sync server has no room for this. Its limits are set in its settings; see docs/sync-server.md.");
+        }
     }
 }

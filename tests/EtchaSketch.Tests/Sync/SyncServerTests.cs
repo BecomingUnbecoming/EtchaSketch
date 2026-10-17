@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using EtchaSketch.Core.Sync;
+using EtchaSketch.Server;
 
 namespace EtchaSketch.Tests.Sync;
 
@@ -67,7 +68,10 @@ public sealed class SyncServerTests : IAsyncLifetime
     public async Task Long_streams_come_back_in_pages()
     {
         var client = _server.Client();
-        await client.PushAsync(Stream, Token, Enumerable.Range(0, 600).Select(i => new[] { (byte)i }).ToList());
+        for (var batch = 0; batch < 3; batch++)
+        {
+            await client.PushAsync(Stream, Token, Enumerable.Range(0, 200).Select(i => new[] { (byte)i }).ToList());
+        }
 
         var first = await client.PullAsync(Stream, Token, after: 0);
 
@@ -97,6 +101,100 @@ public sealed class SyncServerTests : IAsyncLifetime
         clock.Now += TimeSpan.FromMinutes(16);
 
         Assert.Null(await client.ClaimPairingAsync("0123456789abcdef0123456789abcdef"));
+    }
+
+    private static Task<SyncServerFixture> WithLimits(SyncLimits limits) => SyncServerFixture.StartAsync(limits: limits);
+
+    private static string StreamNamed(int number) => $"stream-number-{number:D4}-padding";
+
+    private static byte[] Bytes(int length) => new byte[length];
+
+    [Fact]
+    public async Task One_oversized_change_refuses_the_whole_push_and_stores_nothing()
+    {
+        await using var server = await WithLimits(new SyncLimits { MaxChangeBytes = 100 });
+        var client = server.Client();
+
+        var refused = await Assert.ThrowsAsync<SyncServerRefusedException>(() => client.PushAsync(Stream, Token, [Bytes(10), Bytes(101)]));
+
+        Assert.Contains("no room", refused.Message);
+        Assert.Empty((await client.PullAsync(Stream, Token, after: 0)).Changes);
+    }
+
+    [Fact]
+    public async Task A_push_with_too_many_changes_is_refused()
+    {
+        await using var server = await WithLimits(new SyncLimits { MaxChangesPerPush = 3 });
+        var client = server.Client();
+
+        await client.PushAsync(Stream, Token, [[1], [2], [3]]);
+        await Assert.ThrowsAsync<SyncServerRefusedException>(() => client.PushAsync(Stream, Token, [[1], [2], [3], [4]]));
+    }
+
+    [Fact]
+    public async Task A_stream_stops_taking_changes_at_its_quota_but_still_reads()
+    {
+        await using var server = await WithLimits(new SyncLimits { MaxStreamBytes = 100 });
+        var client = server.Client();
+        await client.PushAsync(Stream, Token, [Bytes(60)]);
+
+        await Assert.ThrowsAsync<SyncServerRefusedException>(() => client.PushAsync(Stream, Token, [Bytes(41)]));
+        await client.PushAsync(Stream, Token, [Bytes(40)]);
+
+        Assert.Equal(2, (await client.PullAsync(Stream, Token, after: 0)).Changes.Count);
+    }
+
+    [Fact]
+    public async Task The_server_stops_creating_streams_at_its_limit_but_existing_ones_keep_working()
+    {
+        await using var server = await WithLimits(new SyncLimits { MaxStreams = 2 });
+        var client = server.Client();
+        await client.PushAsync(StreamNamed(1), Token, [[1]]);
+        await client.PushAsync(StreamNamed(2), Token, [[1]]);
+
+        await Assert.ThrowsAsync<SyncServerRefusedException>(() => client.PushAsync(StreamNamed(3), Token, [[1]]));
+        await client.PushAsync(StreamNamed(1), Token, [[2]]);
+        Assert.Empty((await client.PullAsync(StreamNamed(3), Token, after: 0)).Changes);
+    }
+
+    [Fact]
+    public async Task Only_so_many_new_device_codes_can_wait_at_once_and_claiming_makes_room()
+    {
+        await using var server = await WithLimits(new SyncLimits { MaxPendingPairings = 2 });
+        var client = server.Client();
+        await client.PutPairingAsync("00000000000000000000000000000001", [1]);
+        await client.PutPairingAsync("00000000000000000000000000000002", [1]);
+
+        await Assert.ThrowsAsync<SyncServerRefusedException>(() => client.PutPairingAsync("00000000000000000000000000000003", [1]));
+        await client.ClaimPairingAsync("00000000000000000000000000000001");
+        await client.PutPairingAsync("00000000000000000000000000000003", [1]);
+    }
+
+    [Fact]
+    public async Task Too_many_requests_from_one_address_are_turned_away()
+    {
+        await using var server = await WithLimits(new SyncLimits { RequestsPerMinute = 3 });
+        var client = server.Client();
+
+        for (var request = 0; request < 3; request++)
+        {
+            await client.PullAsync(Stream, Token, after: 0);
+        }
+
+        var refused = await Assert.ThrowsAsync<SyncServerRefusedException>(() => client.PullAsync(Stream, Token, after: 0));
+        Assert.Contains("too many requests", refused.Message);
+    }
+
+    [Fact]
+    public async Task Health_checks_are_not_rate_limited()
+    {
+        await using var server = await WithLimits(new SyncLimits { RequestsPerMinute = 1 });
+        var http = server.HttpClient();
+
+        for (var request = 0; request < 5; request++)
+        {
+            Assert.Equal(HttpStatusCode.OK, (await http.GetAsync("/health")).StatusCode);
+        }
     }
 
     private sealed class ManualClock(DateTimeOffset now) : TimeProvider
