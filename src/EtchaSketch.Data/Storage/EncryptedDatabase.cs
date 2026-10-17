@@ -81,6 +81,9 @@ public static class EncryptedDatabase
 
         // The key is only checked on first read; a wrong key fails here with "file is not a database".
         Scalar(connection, "SELECT count(*) FROM sqlite_master;");
+
+        // SQLite leaves foreign keys off unless each connection asks for them.
+        Execute(connection, "PRAGMA foreign_keys = ON;");
     }
 
     private static void Execute(SqliteConnection connection, string sql)
