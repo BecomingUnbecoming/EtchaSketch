@@ -1,0 +1,44 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:EtchaSketch.UI.ViewModels"
+             x:Class="EtchaSketch.UI.Views.LockSettingsView"
+             x:DataType="vm:LockSettingsViewModel">
+    <Border MaxWidth="480" Margin="16" Padding="20" CornerRadius="12" VerticalAlignment="Center"
+            Background="{DynamicResource SolidBackgroundFillColorBaseBrush}">
+        <ScrollViewer>
+            <StackPanel Spacing="10">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Text="PIN lock" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <Button Grid.Column="1" Content="Close" Command="{Binding CloseCommand}" />
+                </Grid>
+
+                <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" Opacity="0.7" />
+                <TextBlock Text="A PIN is for this device only. Set one on each device you use."
+                           TextWrapping="Wrap" FontSize="12" Opacity="0.7" />
+
+                <StackPanel Spacing="6" IsVisible="{Binding HasPin}">
+                    <TextBlock Text="Current PIN" />
+                    <TextBox Text="{Binding CurrentPin}" PasswordChar="•" TextInputOptions.ContentType="Pin" />
+                </StackPanel>
+
+                <TextBlock Text="New PIN (4 to 12 digits)" />
+                <TextBox Text="{Binding NewPin}" PasswordChar="•" TextInputOptions.ContentType="Pin" />
+                <TextBlock Text="New PIN again" />
+                <TextBox Text="{Binding ConfirmPin}" PasswordChar="•" TextInputOptions.ContentType="Pin" />
+
+                <TextBlock Text="{Binding ErrorMessage}" Foreground="#C42B1C" TextWrapping="Wrap"
+                           IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+                <WrapPanel>
+                    <Button Content="Save PIN" Command="{Binding SavePinCommand}" Classes="accent" Margin="0,0,8,8" />
+                    <Button Content="Remove PIN" Command="{Binding RemovePinCommand}" IsVisible="{Binding HasPin}"
+                            Margin="0,0,8,8" />
+                </WrapPanel>
+
+                <CheckBox IsChecked="{Binding UseDeviceUnlock}" IsVisible="{Binding CanUseDeviceUnlock}">
+                    <TextBlock Text="Also unlock with this device's fingerprint or screen lock" TextWrapping="Wrap" />
+                </CheckBox>
+            </StackPanel>
+        </ScrollViewer>
+    </Border>
+</UserControl>

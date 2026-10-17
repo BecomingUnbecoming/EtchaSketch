@@ -23,9 +23,10 @@ public sealed class AppSession : IDisposable
     private readonly DeviceSettings _settings;
     private bool _syncing;
 
-    private AppSession(SqliteConnection connection, TimeProvider clock, Func<Uri, ISyncServer> syncServers)
+    private AppSession(SqliteConnection connection, TimeProvider clock, Func<Uri, ISyncServer> syncServers, IDeviceUnlock? deviceUnlock)
     {
         _connection = connection;
+        DeviceUnlock = deviceUnlock;
         _clock = clock;
         _syncServers = syncServers;
         _settings = new DeviceSettings(connection);
@@ -33,6 +34,7 @@ public sealed class AppSession : IDisposable
         Tasks = new TaskRepository(connection);
         Notifications = new NotificationRepository(connection);
         Reminders = new Reminders(Tasks, Notifications);
+        Locks = new ProfileLocks(connection);
 
         if (_settings.Get(SyncServerSetting) is { } address && Uri.TryCreate(address, UriKind.Absolute, out var server))
         {
@@ -47,6 +49,14 @@ public sealed class AppSession : IDisposable
     public NotificationRepository Notifications { get; }
 
     public Reminders Reminders { get; }
+
+    /// <summary>Each person's PIN on this device.</summary>
+    public ProfileLocks Locks { get; }
+
+    /// <summary>The device's fingerprint or screen lock, or null where the platform has none.</summary>
+    public IDeviceUnlock? DeviceUnlock { get; }
+
+    public bool HasDeviceUnlock => DeviceUnlock?.IsAvailable == true;
 
     /// <summary>The sync server this device uses, or null before one is set.</summary>
     public Uri? SyncServerAddress { get; private set; }
@@ -81,7 +91,8 @@ public sealed class AppSession : IDisposable
         }
 
         return new AppSession(connection, environment.Clock ?? TimeProvider.System,
-            environment.SyncServerFactory ?? (address => new HttpSyncServer(new HttpClient { BaseAddress = address, Timeout = TimeSpan.FromSeconds(30) })));
+            environment.SyncServerFactory ?? (address => new HttpSyncServer(new HttpClient { BaseAddress = address, Timeout = TimeSpan.FromSeconds(30) })),
+            environment.DeviceUnlock);
     }
 
     /// <summary>Starts syncing a household set up on this device through the server at an address.</summary>
