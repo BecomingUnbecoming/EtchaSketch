@@ -12,15 +12,32 @@ env:
 
 jobs:
   test:
-    name: Build and test
-    runs-on: ubuntu-latest
+    name: Build and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # Each system's secure key storage is tested on that system.
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
       - run: dotnet build src/EtchaSketch.Server
-      - run: dotnet test tests/EtchaSketch.Tests
+      - name: Test
+        if: runner.os != 'Linux'
+        run: dotnet test tests/EtchaSketch.Tests
+      - name: Test (with a Secret Service keyring)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q gnome-keyring libsecret-tools dbus-x11
+          dbus-run-session -- bash -c '
+            echo -n ci | gnome-keyring-daemon --daemonize --login > /dev/null
+            gnome-keyring-daemon --start --components=secrets > /dev/null
+            dotnet test tests/EtchaSketch.Tests'
 
   desktop:
     name: Desktop (${{ matrix.rid }})
