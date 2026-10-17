@@ -47,6 +47,7 @@
                     <Button Content="New task" Command="{Binding NewTaskCommand}" Classes="accent" Margin="0,0,8,8" />
                     <Button Content="{Binding NotificationsLabel}" Command="{Binding OpenNotificationsCommand}" Margin="0,0,8,8" />
                     <Button Content="Switch person" Command="{Binding SwitchPersonCommand}" Margin="0,0,8,8" />
+                    <Button Content="Sync" Command="{Binding OpenSyncCommand}" Margin="0,0,8,8" />
                 </WrapPanel>
             </StackPanel>
 
@@ -89,6 +90,10 @@
 
         <Border IsVisible="{Binding IsShowingNotifications}" Background="#80000000">
             <ContentControl Content="{Binding Notifications}" />
+        </Border>
+
+        <Border IsVisible="{Binding IsShowingSync}" Background="#80000000">
+            <ContentControl Content="{Binding Sync}" />
         </Border>
     </Grid>
 </UserControl>

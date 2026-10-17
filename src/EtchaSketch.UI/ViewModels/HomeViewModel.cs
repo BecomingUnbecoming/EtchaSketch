@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using EtchaSketch.Core.Privacy;
@@ -14,7 +15,7 @@ namespace EtchaSketch.UI.ViewModels;
 public partial class HomeViewModel : ViewModelBase
 {
     private readonly AppSession _session;
-    private readonly Household _household;
+    private Household _household;
     private readonly Profile _me;
     private readonly Action _switchPerson;
     private DateOnly _shownDay;
@@ -48,6 +49,13 @@ public partial class HomeViewModel : ViewModelBase
     public partial NotificationCenterViewModel? Notifications { get; private set; }
 
     public bool IsShowingNotifications => Notifications is not null;
+
+    /// <summary>The sync settings panel, or null when it is closed.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsShowingSync))]
+    public partial SyncViewModel? Sync { get; private set; }
+
+    public bool IsShowingSync => Sync is not null;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(NotificationsLabel))]
@@ -86,6 +94,36 @@ public partial class HomeViewModel : ViewModelBase
         UpdateUnreadCount();
     }
 
+    [RelayCommand]
+    private void OpenSync() => Sync = new SyncViewModel(_session, _household.Id, Synced, () => Sync = null);
+
+    /// <summary>
+    /// Syncs quietly in the background. The home screen runs this when it opens and every minute.
+    /// A failed sync is retried next time; the sync panel shows what went wrong when asked.
+    /// </summary>
+    [RelayCommand]
+    private async Task AutoSync()
+    {
+        try
+        {
+            if (await _session.SyncAsync() is { } result)
+            {
+                Synced(result);
+            }
+        }
+        catch (Exception exception) when (Messages.IsSyncProblem(exception))
+        {
+        }
+    }
+
+    private void Synced(Data.Sync.SyncResult result)
+    {
+        if (result.Received > 0)
+        {
+            Refresh();
+        }
+    }
+
     private void CloseNotifications()
     {
         Notifications = null;
@@ -105,6 +143,8 @@ public partial class HomeViewModel : ViewModelBase
 
     private void Refresh()
     {
+        // Other devices may have added people since this screen opened.
+        _household = _session.Households.Get(_household.Id) ?? _household;
         _shownDay = _session.Today;
         _session.Reminders.Check(_household, _session.Now);
         UpdateUnreadCount();
