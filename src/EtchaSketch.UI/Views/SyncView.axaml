@@ -16,15 +16,17 @@
                            TextWrapping="Wrap" Opacity="0.7" />
                 <TextBlock Text="{Binding StatusText}" FontWeight="SemiBold" />
 
-                <TextBlock Text="Sync server address" />
-                <TextBox Text="{Binding ServerAddress}" PlaceholderText="http://192.168.1.20:5080" />
+                <!-- Before sync is on: the server's address and token, and the button that starts it. -->
+                <StackPanel Spacing="10" IsVisible="{Binding !IsEnabled}">
+                    <TextBlock Text="Sync server address" />
+                    <TextBox Text="{Binding ServerAddress}" PlaceholderText="http://192.168.1.20:5080" />
 
-                <TextBlock Text="Join token (only if the server asks for one)" />
-                <TextBox Text="{Binding JoinToken}" PasswordChar="•" />
-                <Button Content="Save token and sync" Command="{Binding SaveJoinTokenCommand}" IsVisible="{Binding IsEnabled}" />
+                    <TextBlock Text="Join token (only if the server asks for one)" />
+                    <TextBox Text="{Binding JoinToken}" PasswordChar="•" />
 
-                <Button Content="Turn on sync" Command="{Binding TurnOnCommand}" Classes="accent"
-                        IsVisible="{Binding !IsEnabled}" />
+                    <Button Content="Turn on sync" Command="{Binding TurnOnCommand}" Classes="accent" />
+                </StackPanel>
+
                 <Button Content="Sync now" Command="{Binding SyncNowCommand}" IsVisible="{Binding IsEnabled}" />
 
                 <TextBlock Text="{Binding ErrorMessage}" Foreground="#C42B1C" TextWrapping="Wrap"
@@ -70,6 +72,18 @@
                         <SelectableTextBlock Text="{Binding RecoveryKeyText}" FontFamily="monospace" FontSize="12" TextWrapping="Wrap" />
                     </Border>
                 </StackPanel>
+
+                <!-- Once sync is on, the server's details tuck away so the things you use stay in view. -->
+                <Expander Header="Server settings" IsVisible="{Binding IsEnabled}">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="Sync server address" />
+                        <TextBox Text="{Binding ServerAddress}" IsReadOnly="True" />
+
+                        <TextBlock Text="Join token (only if the server asks for one)" />
+                        <TextBox Text="{Binding JoinToken}" PasswordChar="•" />
+                        <Button Content="Save token and sync" Command="{Binding SaveJoinTokenCommand}" />
+                    </StackPanel>
+                </Expander>
             </StackPanel>
         </ScrollViewer>
     </Border>
