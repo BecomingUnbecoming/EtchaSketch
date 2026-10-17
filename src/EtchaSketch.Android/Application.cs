@@ -17,7 +17,8 @@ namespace EtchaSketch.Android
         {
             App.Environment = new AppEnvironment(
                 System.IO.Path.Combine(FilesDir!.AbsolutePath, "etchasketch.db"),
-                new AndroidKeyStore(this));
+                new AndroidKeyStore(this),
+                DeviceUnlock: new AndroidDeviceUnlock(this));
 
             return base.CustomizeAppBuilder(builder)
             .WithInterFont();

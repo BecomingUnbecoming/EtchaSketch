@@ -15,8 +15,14 @@
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:PersonChoice">
-                        <Button Content="{Binding Name}" Command="{Binding ChooseCommand}"
-                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Padding="12" />
+                        <Button Command="{Binding ChooseCommand}"
+                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Padding="12">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="{Binding Name}" />
+                                <TextBlock Text="PIN" FontSize="12" Opacity="0.6" VerticalAlignment="Center"
+                                           IsVisible="{Binding IsLocked}" />
+                            </StackPanel>
+                        </Button>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>

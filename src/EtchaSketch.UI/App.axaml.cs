@@ -42,6 +42,26 @@ public partial class App : Application
             singleView.MainView = new MainView { DataContext = main };
         }
 
+        // Phones send the app to the background when someone switches away. Coming back after a
+        // while needs the PIN again.
+        if (TryGetFeature(typeof(IActivatableLifetime)) is IActivatableLifetime activatable)
+        {
+            activatable.Deactivated += (_, e) =>
+            {
+                if (e.Kind == ActivationKind.Background)
+                {
+                    main.EnteredBackground();
+                }
+            };
+            activatable.Activated += (_, e) =>
+            {
+                if (e.Kind == ActivationKind.Background)
+                {
+                    main.ReturnedToForeground();
+                }
+            };
+        }
+
         base.OnFrameworkInitializationCompleted();
     }
 }

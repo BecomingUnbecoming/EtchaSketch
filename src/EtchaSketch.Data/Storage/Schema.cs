@@ -118,6 +118,20 @@ public static class Schema
 
         CREATE UNIQUE INDEX task_completions_unique ON task_completions (task_id, profile_id, completed_at);
         """,
+
+        // 5: each person's PIN on this device, kept only as a salted hash, and how many wrong
+        // guesses they have made. Device-local like device_settings, so it never syncs.
+        """
+        CREATE TABLE profile_locks (
+            profile_id TEXT PRIMARY KEY,
+            pin_hash BLOB NOT NULL,
+            pin_salt BLOB NOT NULL,
+            iterations INTEGER NOT NULL,
+            device_unlock INTEGER NOT NULL DEFAULT 0,
+            failed_attempts INTEGER NOT NULL DEFAULT 0,
+            wait_until TEXT
+        );
+        """,
     ];
 
     /// <summary>The version a fully upgraded database reports.</summary>
