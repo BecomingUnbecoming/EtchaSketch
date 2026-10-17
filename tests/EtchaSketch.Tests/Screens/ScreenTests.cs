@@ -302,11 +302,4 @@ public sealed class ScreenTests : IDisposable
         jordy.OpenNotificationsCommand.Execute(null);
         Assert.Equal("Lacy assigned Dishes to you", Assert.Single(jordy.Notifications!.Items).Title);
     }
-
-    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
-    {
-        public override DateTimeOffset GetUtcNow() => now;
-
-        public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
-    }
 }
