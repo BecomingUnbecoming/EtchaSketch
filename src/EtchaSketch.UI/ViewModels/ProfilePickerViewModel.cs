@@ -53,7 +53,8 @@ public partial class ProfilePickerViewModel : ViewModelBase
         {
             foreach (var person in household.Members)
             {
-                People.Add(new PersonChoice(person.DisplayName, new RelayCommand(() => Choose(household, person))));
+                People.Add(new PersonChoice(person.DisplayName, _session.Locks.HasPin(person.Id),
+                    new RelayCommand(() => Choose(household, person))));
             }
         }
     }
@@ -65,4 +66,5 @@ public partial class ProfilePickerViewModel : ViewModelBase
     }
 }
 
-public sealed record PersonChoice(string Name, IRelayCommand ChooseCommand);
+/// <param name="IsLocked">Whether choosing this person asks for their PIN.</param>
+public sealed record PersonChoice(string Name, bool IsLocked, IRelayCommand ChooseCommand);

@@ -16,6 +16,18 @@ internal static class Messages
             ? exception.Message
             : exception.Message.Replace($" (Parameter '{exception.ParamName}')", "", StringComparison.Ordinal);
 
+    /// <summary>A wait as a person would say it: "30 seconds", "2 minutes".</summary>
+    public static string Duration(TimeSpan wait)
+    {
+        var seconds = (int)Math.Ceiling(wait.TotalSeconds);
+        if (seconds < 120)
+        {
+            return seconds == 1 ? "1 second" : $"{seconds} seconds";
+        }
+
+        return $"{(int)Math.Ceiling(seconds / 60.0)} minutes";
+    }
+
     /// <summary>Whether a sync failed for a reason worth telling the person, rather than a bug.</summary>
     public static bool IsSyncProblem(Exception exception) =>
         exception is HttpRequestException or TaskCanceledException or FormatException or PairingCodeNotFoundException
