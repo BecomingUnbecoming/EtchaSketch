@@ -132,6 +132,13 @@ public static class Schema
             wait_until TEXT
         );
         """,
+
+        // 6: a project, labels and an early reminder on each task. They sync with the task.
+        """
+        ALTER TABLE tasks ADD COLUMN project TEXT;
+        ALTER TABLE tasks ADD COLUMN labels TEXT;
+        ALTER TABLE tasks ADD COLUMN remind_days_before INTEGER;
+        """,
     ];
 
     /// <summary>The version a fully upgraded database reports.</summary>

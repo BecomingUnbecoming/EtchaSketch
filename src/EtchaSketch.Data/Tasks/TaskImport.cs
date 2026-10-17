@@ -30,10 +30,12 @@ public sealed record ImportedTask
     /// <summary>Where it came from, like vikunja:123. Importing the same file twice adds nothing the second time.</summary>
     public string? Source { get; init; }
 
-    /// <summary>EtchaSketch has no projects or labels yet, so these are kept as a line in the notes.</summary>
     public string? Project { get; init; }
 
     public IReadOnlyList<string>? Labels { get; init; }
+
+    /// <summary>Remind this many days before the due date.</summary>
+    public int? RemindDaysBefore { get; init; }
 }
 
 public sealed record ImportedRepeat(int Every, string Unit);
@@ -163,22 +165,6 @@ public static class TaskImport
             lines.Add(item.Notes.Trim());
         }
 
-        var where = new List<string>();
-        if (!string.IsNullOrWhiteSpace(item.Project))
-        {
-            where.Add($"Project: {item.Project.Trim()}");
-        }
-
-        if (item.Labels is { Count: > 0 })
-        {
-            where.Add($"Labels: {string.Join(", ", item.Labels.Where(label => !string.IsNullOrWhiteSpace(label)).Select(label => label.Trim()))}");
-        }
-
-        if (where.Count > 0)
-        {
-            lines.Add(string.Join(" · ", where));
-        }
-
         if (sourceLine is not null)
         {
             lines.Add(sourceLine);
@@ -205,6 +191,9 @@ public static class TaskImport
                 _ => TaskPriority.Normal,
             },
             Recurrence = Repeat(item.Repeat),
+            Project = item.Project,
+            Labels = item.Labels?.Where(label => !string.IsNullOrWhiteSpace(label)).ToList() ?? [],
+            RemindDaysBefore = item.RemindDaysBefore,
             Tier = item.Shared ? PrivacyTier.Household : PrivacyTier.Private,
         };
     }

@@ -109,6 +109,40 @@ public sealed class ScreenTests : IDisposable
     }
 
     [Fact]
+    public void A_task_keeps_its_project_labels_and_early_reminder_and_the_list_can_be_filtered()
+    {
+        var home = SetUp(Launch());
+        home.NewTaskCommand.Execute(null);
+        home.Editor!.Title = "Rotate keys";
+        home.Editor.Project = "Homelab";
+        home.Editor.LabelsText = "b-hands, security";
+        home.Editor.Reminder = home.Editor.ReminderOptions.Single(option => option.Days == 1);
+        home.Editor.DueDate = new DateTime(2026, 10, 30);
+        home.Editor.SaveCommand.Execute(null);
+        home.NewTaskCommand.Execute(null);
+        home.Editor!.Title = "Buy milk";
+        home.Editor.SaveCommand.Execute(null);
+
+        var row = home.MyTasks.Single(task => task.Title == "Rotate keys");
+        Assert.Contains("Homelab", row.Details);
+        Assert.Contains("#b-hands #security", row.Details);
+
+        home.FilterText = "security";
+        Assert.Equal(["Rotate keys"], home.MyTasks.Select(task => task.Title));
+        home.FilterText = "#milk";
+        Assert.Empty(home.MyTasks);
+        home.FilterText = "MILK";
+        Assert.Equal(["Buy milk"], home.MyTasks.Select(task => task.Title));
+        home.FilterText = "";
+        Assert.Equal(2, home.MyTasks.Count);
+
+        row.EditCommand.Execute(null);
+        Assert.Equal("Homelab", home.Editor!.Project);
+        Assert.Equal("b-hands, security", home.Editor.LabelsText);
+        Assert.Equal(1, home.Editor.Reminder.Days);
+    }
+
+    [Fact]
     public void Setup_explains_what_is_missing()
     {
         var setup = Assert.IsType<SetupViewModel>(Launch().CurrentPage);

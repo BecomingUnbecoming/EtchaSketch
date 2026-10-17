@@ -68,11 +68,15 @@ public sealed class TaskImportTests : IDisposable
     }
 
     [Fact]
-    public void Project_and_labels_are_kept_as_a_line_in_the_notes_because_there_is_nowhere_else_yet()
+    public void Project_labels_and_the_early_reminder_become_real_fields()
     {
-        Import(File("""{ "title": "Fix music", "project": "Homelab", "labels": ["b-hands", "quick-win"], "source": "vikunja:40" }"""));
+        Import(File("""{ "title": "Fix music", "project": "Homelab", "labels": ["b-hands", "quick-win"], "remindDaysBefore": 1, "due": "2026-10-30", "source": "vikunja:40" }"""));
 
-        Assert.Equal("Project: Homelab · Labels: b-hands, quick-win\n\nImported from vikunja:40", Assert.Single(_tasks.VisibleTo(_robin.Id)).Notes);
+        var task = Assert.Single(_tasks.VisibleTo(_robin.Id));
+        Assert.Equal("Homelab", task.Project);
+        Assert.Equal(["b-hands", "quick-win"], task.Labels);
+        Assert.Equal(1, task.RemindDaysBefore);
+        Assert.Equal("Imported from vikunja:40", task.Notes);
     }
 
     [Fact]

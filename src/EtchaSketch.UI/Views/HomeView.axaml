@@ -54,6 +54,8 @@
                 </WrapPanel>
             </StackPanel>
 
+            <TextBox DockPanel.Dock="Top" Text="{Binding FilterText}" PlaceholderText="Filter by title, project or label" Margin="0,0,0,8" />
+
             <TabControl>
                 <TabItem Header="My tasks">
                     <ScrollViewer>

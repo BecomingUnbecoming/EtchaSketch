@@ -30,6 +30,18 @@ public sealed record TaskItem : ITiered, IOwned
     [Tier(PrivacyTier.Household)]
     public TaskPriority Priority { get; init; } = TaskPriority.Normal;
 
+    /// <summary>The group a task belongs to, like "Homelab". Shown to whoever can see the task.</summary>
+    [Tier(PrivacyTier.Household)]
+    public string? Project { get; init; }
+
+    /// <summary>Short tags like "quick-win". Shown to whoever can see the task.</summary>
+    [Tier(PrivacyTier.Household)]
+    public IReadOnlyList<string> Labels { get; init; } = [];
+
+    /// <summary>Remind this many days before the due date, as well as on it. Null for no early reminder.</summary>
+    [Tier(PrivacyTier.Household)]
+    public int? RemindDaysBefore { get; init; }
+
     [Tier(PrivacyTier.Household)]
     public Guid? AssigneeId { get; init; }
 

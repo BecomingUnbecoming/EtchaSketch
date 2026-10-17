@@ -50,6 +50,12 @@ public partial class HomeViewModel : ViewModelBase
 
     public bool IsShowingLockSettings => LockSettings is not null;
 
+    /// <summary>Narrows your list to tasks whose title, project or labels contain this text.</summary>
+    [ObservableProperty]
+    public partial string FilterText { get; set; } = "";
+
+    partial void OnFilterTextChanged(string value) => Refresh();
+
     /// <summary>Your own tasks plus everyone's shared chores.</summary>
     public ObservableCollection<TaskRowViewModel> MyTasks { get; } = [];
 
@@ -198,7 +204,8 @@ public partial class HomeViewModel : ViewModelBase
         UpdateUnreadCount();
 
         MyTasks.Clear();
-        foreach (var row in _session.Tasks.VisibleTo(_me.Id).Select(Row).OfType<TaskRowViewModel>())
+        var filter = FilterText.Trim();
+        foreach (var row in _session.Tasks.VisibleTo(_me.Id).Select(Row).OfType<TaskRowViewModel>().Where(row => Matches(row, filter)))
         {
             MyTasks.Add(row);
         }
@@ -210,6 +217,12 @@ public partial class HomeViewModel : ViewModelBase
             ChoreColumns.Add(new ChoreColumnViewModel(name, column.Chores.Select(Row).OfType<TaskRowViewModel>().ToList()));
         }
     }
+
+    private static bool Matches(TaskRowViewModel row, string filter) =>
+        filter.Length == 0
+        || row.Title.Contains(filter, StringComparison.OrdinalIgnoreCase)
+        || (row.Project?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false)
+        || row.Labels.Any(label => label.Contains(filter.TrimStart('#'), StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Builds a row from what the privacy gateway lets this person see, so a screen can't show

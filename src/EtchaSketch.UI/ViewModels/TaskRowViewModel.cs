@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using CommunityToolkit.Mvvm.Input;
 using EtchaSketch.Core.Privacy;
 using EtchaSketch.Core.Tasks;
@@ -37,6 +38,18 @@ public sealed class TaskRowViewModel
         }
 
         var details = new List<string>();
+        Project = task.Project;
+        Labels = task.Labels;
+        if (task.Project is { } project)
+        {
+            details.Add(project);
+        }
+
+        if (task.Labels.Count > 0)
+        {
+            details.Add(string.Join(" ", task.Labels.Select(label => "#" + label)));
+        }
+
         if (task.Priority != TaskPriority.Normal)
         {
             details.Add($"{task.Priority} priority");
@@ -61,6 +74,10 @@ public sealed class TaskRowViewModel
     }
 
     public string Title { get; }
+
+    public string? Project { get; }
+
+    public IReadOnlyList<string> Labels { get; }
 
     /// <summary>Your notes on your own task. Always null on someone else's.</summary>
     public string? Notes { get; }

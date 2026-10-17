@@ -146,6 +146,24 @@ public sealed class SyncEngineTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Project_labels_and_the_early_reminder_travel_with_the_task()
+    {
+        _desktop.Tasks.Add(new TaskItem
+        {
+            HouseholdId = _home.Id, OwnerId = _robin.Id, Title = "Rotate keys", Due = Today.AddDays(5), Project = "Homelab",
+            Labels = ["b-hands", "security"], RemindDaysBefore = 2,
+        });
+        await _desktop.Sync.SyncAsync();
+
+        var phone = await JoinAs(_robin, "robin-phone");
+
+        var task = phone.Tasks.VisibleTo(_robin.Id).Single();
+        Assert.Equal("Homelab", task.Project);
+        Assert.Equal(["b-hands", "security"], task.Labels);
+        Assert.Equal(2, task.RemindDaysBefore);
+    }
+
+    [Fact]
     public async Task Kais_phone_never_receives_robins_private_tasks_or_notes()
     {
         Add(_desktop, "Surprise party for Kai", notes: "the bakery on 5th");

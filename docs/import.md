@@ -22,10 +22,13 @@ choose the file (or paste its text), choose **Check the file** to see what would
 | `priority` (`low`, `normal`, `high`, `urgent`) | Priority |
 | `repeat` (`{"every": 2, "unit": "weeks"}`; daily, weekly or monthly) | Repeats |
 | `shared`, `done`, `source` | Household task, left out, duplicate check |
-| `project`, `labels` | A line in the notes, because there are no projects or labels yet |
+| `project`, `labels` | Project and labels |
+| `remindDaysBefore` (`1`) | A reminder that many days before the due date, as well as on it |
 
-Reminders, start dates, attachments, comments and related-task links aren't carried over.
-Due dates are, and EtchaSketch reminds you from those.
+Start dates, attachments and comments aren't carried over. Links to other tasks (blocked by,
+related…) are written into the notes as lines like `Blocked by: Install the SDK`. The Vikunja
+converter turns reminders set a number of days before a due date into `remindDaysBefore`; reminders at
+a fixed time of day aren't carried over.
 
 ## The file
 
@@ -35,7 +38,8 @@ Due dates are, and EtchaSketch reminds you from those.
   "version": 1,
   "tasks": [
     { "title": "Rotate keys", "due": "2026-10-22", "priority": "high",
-      "notes": "Start with the Cloudflare token", "source": "vikunja:41" }
+      "notes": "Start with the Cloudflare token", "project": "Homelab", "labels": ["b-hands"],
+      "remindDaysBefore": 1, "source": "vikunja:41" }
   ]
 }
 ```
