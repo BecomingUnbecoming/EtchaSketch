@@ -236,6 +236,17 @@ public sealed class SyncEngineTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_PIN_stays_on_the_device_it_was_set_on()
+    {
+        _desktop.Locks.SetPin(_lacy.Id, "482193");
+        await _desktop.Sync.SyncAsync();
+
+        var lacysPhone = await JoinAs(_lacy, "lacy-phone");
+
+        Assert.False(lacysPhone.Locks.HasPin(_lacy.Id));
+    }
+
+    [Fact]
     public async Task Syncing_with_nothing_new_sends_nothing()
     {
         Add(_desktop, "Book dentist");
@@ -283,6 +294,7 @@ public sealed class SyncEngineTests : IAsyncLifetime
             Notifications = new NotificationRepository(_db);
             Reminders = new Reminders(Tasks, Notifications);
             Sync = new SyncEngine(_db, server, Clock);
+            Locks = new ProfileLocks(_db, iterations: 1_000);
         }
 
         public ManualClock Clock { get; } = new(Wednesday);
@@ -296,6 +308,8 @@ public sealed class SyncEngineTests : IAsyncLifetime
         public Reminders Reminders { get; }
 
         public SyncEngine Sync { get; }
+
+        public ProfileLocks Locks { get; }
 
         /// <summary>Whether any table on this device holds the text at all.</summary>
         public bool Contains(string text)
