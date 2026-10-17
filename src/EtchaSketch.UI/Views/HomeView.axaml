@@ -40,11 +40,15 @@
 
     <Grid>
         <DockPanel Margin="16">
-            <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8" Margin="0,0,0,12">
-                <TextBlock Text="{Binding Greeting}" FontSize="22" FontWeight="SemiBold" VerticalAlignment="Center" />
-                <Button Grid.Column="1" Content="Switch person" Command="{Binding SwitchPersonCommand}" />
-                <Button Grid.Column="2" Content="New task" Command="{Binding NewTaskCommand}" Classes="accent" />
-            </Grid>
+            <StackPanel DockPanel.Dock="Top" Spacing="8" Margin="0,0,0,12">
+                <TextBlock Text="{Binding Greeting}" FontSize="22" FontWeight="SemiBold" />
+                <!-- Wraps onto a second line on narrow phone screens. -->
+                <WrapPanel>
+                    <Button Content="New task" Command="{Binding NewTaskCommand}" Classes="accent" Margin="0,0,8,8" />
+                    <Button Content="{Binding NotificationsLabel}" Command="{Binding OpenNotificationsCommand}" Margin="0,0,8,8" />
+                    <Button Content="Switch person" Command="{Binding SwitchPersonCommand}" Margin="0,0,8,8" />
+                </WrapPanel>
+            </StackPanel>
 
             <TabControl>
                 <TabItem Header="My tasks">
@@ -81,6 +85,10 @@
         <!-- The task editor slides over the home screen while it's open. -->
         <Border IsVisible="{Binding IsEditing}" Background="#80000000">
             <ContentControl Content="{Binding Editor}" />
+        </Border>
+
+        <Border IsVisible="{Binding IsShowingNotifications}" Background="#80000000">
+            <ContentControl Content="{Binding Notifications}" />
         </Border>
     </Grid>
 </UserControl>

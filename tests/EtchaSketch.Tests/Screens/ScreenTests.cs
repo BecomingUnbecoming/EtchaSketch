@@ -228,6 +228,81 @@ public sealed class ScreenTests : IDisposable
         Assert.IsType<MessageViewModel>(app.CurrentPage);
     }
 
+    [Fact]
+    public void A_task_due_today_lights_up_the_notifications_button()
+    {
+        var home = SetUp(Launch());
+        Assert.Equal("Notifications", home.NotificationsLabel);
+
+        AddTask(home, "Book dentist", editor => editor.DueDate = new DateTime(2026, 10, 21));
+
+        Assert.Equal("Notifications (1)", home.NotificationsLabel);
+    }
+
+    [Fact]
+    public void Opening_notifications_shows_them_and_marks_them_read()
+    {
+        var home = SetUp(Launch());
+        AddTask(home, "Renew passport", editor => editor.DueDate = new DateTime(2026, 10, 19));
+
+        home.OpenNotificationsCommand.Execute(null);
+
+        var center = home.Notifications!;
+        var row = Assert.Single(center.Items);
+        Assert.Equal("Renew passport is overdue", row.Title);
+        Assert.Equal("It was due Mon 19 Oct", row.Body);
+        Assert.Equal("09:00", row.WhenText);
+        Assert.True(row.IsUnread);
+
+        center.CloseCommand.Execute(null);
+
+        Assert.Null(home.Notifications);
+        Assert.Equal("Notifications", home.NotificationsLabel);
+    }
+
+    [Fact]
+    public void Quiet_hours_are_saved_and_held_notifications_are_counted()
+    {
+        var home = SetUp(Launch());
+        home.OpenNotificationsCommand.Execute(null);
+        var center = home.Notifications!;
+        Assert.False(center.QuietHoursEnabled);
+
+        center.QuietStart = new TimeSpan(8, 0, 0);
+        center.QuietEnd = new TimeSpan(10, 0, 0);
+        center.QuietHoursEnabled = true;
+        center.CloseCommand.Execute(null);
+        AddTask(home, "Book dentist", editor => editor.DueDate = new DateTime(2026, 10, 21));
+
+        Assert.Equal("Notifications", home.NotificationsLabel);
+        home.OpenNotificationsCommand.Execute(null);
+        Assert.Empty(home.Notifications!.Items);
+        Assert.Equal("1 notification held until 10:00", home.Notifications.HeldText);
+        Assert.True(home.Notifications.QuietHoursEnabled);
+        Assert.Equal(new TimeSpan(8, 0, 0), home.Notifications.QuietStart);
+    }
+
+    [Fact]
+    public void A_chore_given_to_someone_shows_in_their_notifications()
+    {
+        var app = Launch();
+        var robin = SetUp(app);
+        AddTask(robin, "Dishes", editor =>
+        {
+            editor.IsShared = true;
+            editor.Assignee = editor.AssigneeOptions.Single(option => option.Label == "Kai");
+        });
+        Assert.Equal("Notifications", robin.NotificationsLabel);
+
+        robin.SwitchPersonCommand.Execute(null);
+        Assert.IsType<ProfilePickerViewModel>(app.CurrentPage).People.Single(person => person.Name == "Kai")
+            .ChooseCommand.Execute(null);
+
+        var kai = Assert.IsType<HomeViewModel>(app.CurrentPage);
+        kai.OpenNotificationsCommand.Execute(null);
+        Assert.Equal("Robin assigned Dishes to you", Assert.Single(kai.Notifications!.Items).Title);
+    }
+
     private sealed class FixedClock(DateTimeOffset now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;

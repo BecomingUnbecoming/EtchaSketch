@@ -62,6 +62,32 @@ public static class Schema
 
         CREATE INDEX task_completions_by_task ON task_completions (task_id);
         """,
+
+        // 3: each person's notification feed, and their quiet hours.
+        """
+        CREATE TABLE notifications (
+            id TEXT PRIMARY KEY,
+            recipient_id TEXT NOT NULL REFERENCES profiles (id),
+            dedupe_key TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            title TEXT NOT NULL,
+            body TEXT,
+            task_id TEXT REFERENCES tasks (id) ON DELETE CASCADE,
+            tier INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            deliver_at TEXT NOT NULL,
+            read_at TEXT,
+            UNIQUE (recipient_id, dedupe_key)
+        );
+
+        CREATE INDEX notifications_by_recipient ON notifications (recipient_id, deliver_at);
+
+        CREATE TABLE quiet_hours (
+            profile_id TEXT PRIMARY KEY REFERENCES profiles (id),
+            start_time TEXT NOT NULL,
+            end_time TEXT NOT NULL
+        );
+        """,
     ];
 
     /// <summary>The version a fully upgraded database reports.</summary>

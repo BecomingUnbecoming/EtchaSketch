@@ -1,0 +1,59 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:EtchaSketch.UI.ViewModels"
+             x:Class="EtchaSketch.UI.Views.NotificationCenterView"
+             x:DataType="vm:NotificationCenterViewModel">
+    <UserControl.Styles>
+        <Style Selector="TextBlock.unread">
+            <Setter Property="FontWeight" Value="Bold" />
+        </Style>
+    </UserControl.Styles>
+
+    <Border MaxWidth="480" Margin="16" Padding="20" CornerRadius="12" VerticalAlignment="Center"
+            Background="{DynamicResource SolidBackgroundFillColorBaseBrush}">
+        <ScrollViewer>
+            <StackPanel Spacing="10">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Text="Notifications" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <Button Grid.Column="1" Content="Close" Command="{Binding CloseCommand}" />
+                </Grid>
+
+                <TextBlock Text="{Binding HeldText}" Opacity="0.7" TextWrapping="Wrap"
+                           IsVisible="{Binding HeldText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                <TextBlock Text="Nothing new." Opacity="0.7" IsVisible="{Binding IsEmpty}" />
+
+                <ItemsControl ItemsSource="{Binding Items}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:NotificationRowViewModel">
+                            <Border Padding="10" Margin="0,0,0,6" CornerRadius="8"
+                                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Text="{Binding Title}" TextWrapping="Wrap" Classes.unread="{Binding IsUnread}" />
+                                        <TextBlock Text="{Binding Body}" FontSize="12" Opacity="0.7" TextWrapping="Wrap"
+                                                   IsVisible="{Binding HasBody}" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="1" Text="{Binding WhenText}" FontSize="12" Opacity="0.7" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <Separator />
+                <CheckBox Content="Quiet hours" IsChecked="{Binding QuietHoursEnabled}" />
+                <TextBlock Text="New notifications wait until quiet hours end." FontSize="12" Opacity="0.7" TextWrapping="Wrap" />
+                <WrapPanel IsEnabled="{Binding QuietHoursEnabled}">
+                    <StackPanel Margin="0,0,16,8" Spacing="4">
+                        <TextBlock Text="From" />
+                        <TimePicker SelectedTime="{Binding QuietStart}" ClockIdentifier="24HourClock" />
+                    </StackPanel>
+                    <StackPanel Margin="0,0,0,8" Spacing="4">
+                        <TextBlock Text="Until" />
+                        <TimePicker SelectedTime="{Binding QuietEnd}" ClockIdentifier="24HourClock" />
+                    </StackPanel>
+                </WrapPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </Border>
+</UserControl>
