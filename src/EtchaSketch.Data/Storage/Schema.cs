@@ -88,6 +88,36 @@ public static class Schema
             end_time TEXT NOT NULL
         );
         """,
+
+        // 4: sync. The keys for each stream this device holds, the version of every row it has
+        // sent or received, and changes waiting to be sent. Completions get a key so they can sync.
+        """
+        CREATE TABLE sync_keys (
+            scope TEXT PRIMARY KEY,
+            key BLOB NOT NULL,
+            pulled_through INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE sync_records (
+            table_name TEXT NOT NULL,
+            row_key TEXT NOT NULL,
+            scope TEXT NOT NULL,
+            version TEXT NOT NULL,
+            hash TEXT,
+            PRIMARY KEY (table_name, row_key)
+        );
+
+        CREATE TABLE sync_outbox (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scope TEXT NOT NULL,
+            table_name TEXT NOT NULL,
+            row_key TEXT NOT NULL,
+            version TEXT NOT NULL,
+            change TEXT NOT NULL
+        );
+
+        CREATE UNIQUE INDEX task_completions_unique ON task_completions (task_id, profile_id, completed_at);
+        """,
     ];
 
     /// <summary>The version a fully upgraded database reports.</summary>

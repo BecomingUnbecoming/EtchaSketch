@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
@@ -18,6 +19,7 @@
     <ProjectReference Include="..\..\src\EtchaSketch.Core\EtchaSketch.Core.csproj" />
     <ProjectReference Include="..\..\src\EtchaSketch.Data\EtchaSketch.Data.csproj" />
     <ProjectReference Include="..\..\src\EtchaSketch.UI\EtchaSketch.UI.csproj" />
+    <ProjectReference Include="..\..\src\EtchaSketch.Server\EtchaSketch.Server.csproj" />
   </ItemGroup>
 
   <ItemGroup>
