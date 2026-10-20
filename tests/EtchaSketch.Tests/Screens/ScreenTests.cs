@@ -2,7 +2,9 @@ using System.Globalization;
 using EtchaSketch.Core.Tasks;
 using EtchaSketch.Data.Storage;
 using EtchaSketch.Tests.TestSupport;
+using EtchaSketch.Data.Notifications;
 using EtchaSketch.UI;
+using EtchaSketch.UI.Services;
 using EtchaSketch.UI.ViewModels;
 
 namespace EtchaSketch.Tests.Screens;
@@ -27,10 +29,10 @@ public sealed class ScreenTests : IDisposable
         Directory.Delete(_directory, recursive: true);
     }
 
-    private MainViewModel Launch()
+    private MainViewModel Launch(IReminderScheduler? scheduler = null)
     {
         var app = new MainViewModel(new AppEnvironment(Path.Combine(_directory, "data", "etchasketch.db"), _keys,
-            new FixedClock(new DateTimeOffset(2026, 10, 21, 9, 0, 0, TimeSpan.Zero))));
+            new FixedClock(new DateTimeOffset(2026, 10, 21, 9, 0, 0, TimeSpan.Zero)), ReminderScheduler: scheduler));
         _apps.Add(app);
         return app;
     }
@@ -428,5 +430,52 @@ public sealed class ScreenTests : IDisposable
 
         Assert.Empty(feed.Items);
         Assert.Equal("Snoozed until 09:10: Take medicine is due now", feed.SnoozedText);
+    }
+
+    private sealed class FakeAlarmClock : IReminderScheduler
+    {
+        public IReadOnlyList<PlannedReminder> Scheduled { get; private set; } = [];
+
+        public void Replace(IReadOnlyList<PlannedReminder> reminders) => Scheduled = reminders;
+    }
+
+    [Fact]
+    public void The_phones_alarm_clock_gets_the_current_persons_upcoming_reminders_only()
+    {
+        var alarms = new FakeAlarmClock();
+        var home = SetUp(Launch(alarms));
+        AddTask(home, "Vet", editor =>
+        {
+            editor.DueDate = new DateTime(2026, 10, 21);
+            editor.DueTime = new TimeSpan(15, 0, 0);
+            editor.IsAlarm = true;
+        });
+        AddTask(home, "Kai's dishes", editor =>
+        {
+            editor.IsShared = true;
+            editor.DueDate = new DateTime(2026, 10, 21);
+            editor.DueTime = new TimeSpan(16, 0, 0);
+            editor.Assignee = editor.AssigneeOptions.Single(option => option.Label == "Kai");
+        });
+
+        var vet = Assert.Single(alarms.Scheduled, reminder => reminder.Kind == Core.Notifications.NotificationKind.DueNow);
+        Assert.Equal("Vet is due now", vet.Title);
+        Assert.True(vet.Alarm);
+        Assert.DoesNotContain(alarms.Scheduled, reminder => reminder.Title.Contains("dishes", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Done_on_a_phone_notification_completes_the_task_once_someone_is_signed_in()
+    {
+        var home = SetUp(Launch());
+        AddTask(home, "Take medicine");
+        var taskId = home.MyTasks.Single().Id;
+
+        ReminderActions.RequestComplete(Guid.NewGuid());
+        ReminderActions.RequestComplete(taskId);
+        home.CompleteRequestedTasks();
+
+        Assert.Empty(home.MyTasks);
+        Assert.Empty(ReminderActions.TakeCompletions());
     }
 }

@@ -21,6 +21,7 @@ public sealed class TaskRowViewModel
         Action edit,
         Action delete)
     {
+        Id = task.Id;
         Title = view.TryGetValue(nameof(TaskItem.Title), out var title) ? title as string ?? "" : "";
         Notes = view.TryGetValue(nameof(TaskItem.Notes), out var notes) ? notes as string : null;
         CanDelete = canDelete;
@@ -72,6 +73,8 @@ public sealed class TaskRowViewModel
 
         Details = string.Join(" · ", details);
     }
+
+    public Guid Id { get; }
 
     public string Title { get; }
 

@@ -296,4 +296,88 @@ public sealed class RemindersTests : IDisposable
         Assert.Contains(back, n => n.ReadAt is null && n.Title == "Call the vet is due now");
         Assert.Throws<ArgumentException>(() => _notifications.Snooze(original.Id, At(Today, 13, 0), At(Today, 14, 0)));
     }
+
+    private IReadOnlyList<PlannedReminder> Upcoming(DateTimeOffset now, int days = 7) =>
+        _reminders.Upcoming(_home, _robin.Id, now, TimeSpan.FromDays(days));
+
+    [Fact]
+    public void Upcoming_lists_timed_reminders_at_their_times_in_order()
+    {
+        AddTimed("Vet", Today, new TimeOnly(15, 0), minutesBefore: 30, alarm: true);
+        AddTimed("Rent", Today.AddDays(2), new TimeOnly(18, 0), daysBefore: 1);
+
+        // Overdue follow-ups (the next morning) are covered by their own test.
+        var planned = Upcoming(At(Today, 9, 0)).Where(p => p.Kind != NotificationKind.Overdue).ToList();
+
+        Assert.Equal(
+            [
+                (At(Today, 14, 30).DateTime, NotificationKind.DueShortly, false),
+                (At(Today, 15, 0).DateTime, NotificationKind.DueNow, true),
+                (At(Today.AddDays(1), 18, 0).DateTime, NotificationKind.DueSoon, false),
+                (At(Today.AddDays(2), 18, 0).DateTime, NotificationKind.DueNow, false),
+            ],
+            planned.Select(p => (p.At, p.Kind, p.Alarm)));
+        Assert.Equal("Vet is due at 15:00", planned[0].Title);
+        Assert.Equal("In 30 minutes", planned[0].Body);
+        Assert.Equal("Rent is due tomorrow", planned[2].Title);
+    }
+
+    [Fact]
+    public void Upcoming_puts_reminders_without_a_time_in_the_morning_and_overdue_ones_the_next_morning()
+    {
+        Add("Bins", Today.AddDays(1));
+
+        var planned = Upcoming(At(Today, 9, 0));
+
+        Assert.Equal(
+            [
+                (At(Today.AddDays(1), 8, 0).DateTime, NotificationKind.DueToday),
+                (At(Today.AddDays(2), 8, 0).DateTime, NotificationKind.Overdue),
+            ],
+            planned.Select(p => (p.At, p.Kind)));
+    }
+
+    [Fact]
+    public void Upcoming_leaves_out_what_has_passed_what_is_too_far_off_and_other_peoples_tasks()
+    {
+        AddTimed("Earlier today", Today, new TimeOnly(8, 0));
+        AddTimed("Next month", Today.AddDays(30), new TimeOnly(9, 0));
+        _tasks.Add(new TaskItem { HouseholdId = _home.Id, OwnerId = _kai.Id, Title = "Kai's", Due = Today, DueTime = new TimeOnly(12, 0) });
+
+        var planned = Upcoming(At(Today, 9, 0));
+
+        Assert.DoesNotContain(planned, p => p.Title.StartsWith("Next month", StringComparison.Ordinal));
+        Assert.DoesNotContain(planned, p => p.Title.StartsWith("Kai", StringComparison.Ordinal));
+        Assert.DoesNotContain(planned, p => p.Kind == NotificationKind.DueNow && p.Title.StartsWith("Earlier", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Upcoming_waits_for_quiet_hours_to_end_except_for_alarms()
+    {
+        _notifications.SetQuietHours(_robin.Id, new QuietHours(new TimeOnly(22, 0), new TimeOnly(7, 0)));
+        AddTimed("Wake up", Today.AddDays(1), new TimeOnly(6, 30), alarm: true);
+        AddTimed("Check email", Today.AddDays(1), new TimeOnly(6, 30));
+        Add("Bins", Today.AddDays(1));
+
+        var planned = Upcoming(At(Today, 9, 0)).Where(p => p.Kind != NotificationKind.Overdue).ToList();
+
+        var tomorrow = Today.AddDays(1);
+        Assert.Contains(planned, p => p is { Title: "Wake up is due now", Alarm: true } && p.At == At(tomorrow, 6, 30).DateTime);
+        Assert.Contains(planned, p => p.Title == "Check email is due now" && p.At == At(tomorrow, 7, 0).DateTime);
+        Assert.Contains(planned, p => p.Title == "Bins is due today" && p.At == At(tomorrow, 7, 0).DateTime);
+    }
+
+    [Fact]
+    public void A_planned_reminder_and_the_feed_entry_for_it_share_a_key()
+    {
+        AddTimed("Vet", Today, new TimeOnly(15, 0));
+        var planned = Assert.Single(Upcoming(At(Today, 9, 0)), p => p.Kind == NotificationKind.DueNow);
+
+        _reminders.Check(_home, At(Today, 15, 0));
+
+        Assert.Equal(0, _notifications.Add(new Notification
+        {
+            OwnerId = _robin.Id, Kind = planned.Kind, Title = planned.Title, CreatedAt = At(Today, 15, 1),
+        }, planned.Key) is null ? 0 : 1);
+    }
 }

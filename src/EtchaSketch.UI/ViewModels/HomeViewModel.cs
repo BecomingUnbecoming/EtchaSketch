@@ -30,6 +30,7 @@ public partial class HomeViewModel : ViewModelBase
         _lock = lockNow;
         CanLock = session.Locks.HasPin(me.Id);
         Refresh();
+        CompleteRequestedTasks();
     }
 
     public string Greeting => $"Hi, {_me.DisplayName}";
@@ -135,7 +136,30 @@ public partial class HomeViewModel : ViewModelBase
         }
 
         _session.Reminders.Check(_household, _session.Now);
+        _session.ScheduleReminders(_household, _me);
         UpdateUnreadCount();
+    }
+
+    /// <summary>
+    /// Completes tasks whose reminder had "Done" pressed outside the app. A task this person can't
+    /// see, or one already finished, is skipped.
+    /// </summary>
+    public void CompleteRequestedTasks()
+    {
+        var done = false;
+        foreach (var taskId in ReminderActions.TakeCompletions())
+        {
+            if (_session.Tasks.VisibleTo(_me.Id).Any(task => task.Id == taskId))
+            {
+                _session.Tasks.Complete(taskId, _me.Id, _session.Now);
+                done = true;
+            }
+        }
+
+        if (done)
+        {
+            Refresh();
+        }
     }
 
     [RelayCommand]
@@ -201,6 +225,7 @@ public partial class HomeViewModel : ViewModelBase
         _household = _session.Households.Get(_household.Id) ?? _household;
         _shownDay = _session.Today;
         _session.Reminders.Check(_household, _session.Now);
+        _session.ScheduleReminders(_household, _me);
         UpdateUnreadCount();
 
         MyTasks.Clear();

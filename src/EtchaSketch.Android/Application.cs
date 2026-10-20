@@ -18,7 +18,8 @@ namespace EtchaSketch.Android
             App.Environment = new AppEnvironment(
                 System.IO.Path.Combine(FilesDir!.AbsolutePath, "etchasketch.db"),
                 new AndroidKeyStore(this),
-                DeviceUnlock: new AndroidDeviceUnlock(this));
+                DeviceUnlock: new AndroidDeviceUnlock(this),
+                ReminderScheduler: new AndroidReminderScheduler(this));
 
             return base.CustomizeAppBuilder(builder)
             .WithInterFont();

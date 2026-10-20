@@ -7,6 +7,7 @@ using EtchaSketch.Data.Notifications;
 using EtchaSketch.Data.Profiles;
 using EtchaSketch.Data.Storage;
 using EtchaSketch.Data.Sync;
+using EtchaSketch.Core.Profiles;
 using EtchaSketch.Data.Tasks;
 using Microsoft.Data.Sqlite;
 
@@ -23,9 +24,16 @@ public sealed class AppSession : IDisposable
     private readonly DeviceSettings _settings;
     private bool _syncing;
 
-    private AppSession(SqliteConnection connection, TimeProvider clock, Func<Uri, ISyncServer> syncServers, IDeviceUnlock? deviceUnlock)
+    /// <summary>How far ahead the device's alarm clock is given reminders.</summary>
+    public static readonly TimeSpan ReminderHorizon = TimeSpan.FromDays(14);
+
+    private readonly IReminderScheduler? _reminderScheduler;
+
+    private AppSession(SqliteConnection connection, TimeProvider clock, Func<Uri, ISyncServer> syncServers, IDeviceUnlock? deviceUnlock,
+        IReminderScheduler? reminderScheduler)
     {
         _connection = connection;
+        _reminderScheduler = reminderScheduler;
         DeviceUnlock = deviceUnlock;
         _clock = clock;
         _syncServers = syncServers;
@@ -92,8 +100,16 @@ public sealed class AppSession : IDisposable
 
         return new AppSession(connection, environment.Clock ?? TimeProvider.System,
             environment.SyncServerFactory ?? (address => new HttpSyncServer(new HttpClient { BaseAddress = address, Timeout = TimeSpan.FromSeconds(30) })),
-            environment.DeviceUnlock);
+            environment.DeviceUnlock, environment.ReminderScheduler);
     }
+
+    /// <summary>
+    /// Hands the device's alarm clock the reminders this person will get in the next two weeks, so
+    /// they arrive with the app closed. Only the person using the device: a phone shows its owner's
+    /// reminders, not the whole household's.
+    /// </summary>
+    public void ScheduleReminders(Household household, Profile person) =>
+        _reminderScheduler?.Replace(Reminders.Upcoming(household, person.Id, Now, ReminderHorizon));
 
     /// <summary>Starts syncing a household set up on this device through the server at an address.</summary>
     public async Task TurnOnSyncAsync(Uri address, Guid householdId, string? joinToken = null, CancellationToken cancellationToken = default)
