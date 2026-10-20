@@ -194,6 +194,39 @@ public static class Schema
             removed_at TEXT
         );
         """,
+
+        // 10: the pantry and the shopping list, shared with the household. Amounts are exact decimal text.
+        """
+        CREATE TABLE stock_items (
+            id TEXT PRIMARY KEY,
+            household_id TEXT NOT NULL REFERENCES households (id),
+            name TEXT NOT NULL,
+            amount TEXT NOT NULL,
+            unit TEXT,
+            location TEXT,
+            best_before TEXT,
+            low_at TEXT,
+            barcode TEXT,
+            tier INTEGER NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX stock_items_by_household ON stock_items (household_id);
+
+        CREATE TABLE shopping_items (
+            id TEXT PRIMARY KEY,
+            household_id TEXT NOT NULL REFERENCES households (id),
+            name TEXT NOT NULL,
+            amount TEXT,
+            unit TEXT,
+            stock_item_id TEXT,
+            bought_at TEXT,
+            tier INTEGER NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX shopping_items_by_household ON shopping_items (household_id);
+        """,
     ];
 
     /// <summary>The version a fully upgraded database reports.</summary>

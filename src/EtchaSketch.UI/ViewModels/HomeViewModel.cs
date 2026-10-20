@@ -30,6 +30,8 @@ public partial class HomeViewModel : ViewModelBase
         _switchPerson = switchPerson;
         _lock = lockNow;
         CanLock = session.Locks.HasPin(me.Id);
+        Pantry = new PantryViewModel(session, household, Refresh);
+        Shopping = new ShoppingViewModel(session, household, Refresh);
         Refresh();
         CompleteRequestedTasks();
     }
@@ -57,6 +59,12 @@ public partial class HomeViewModel : ViewModelBase
     public partial string FilterText { get; set; } = "";
 
     partial void OnFilterTextChanged(string value) => Refresh();
+
+    /// <summary>The household's stock.</summary>
+    public PantryViewModel Pantry { get; }
+
+    /// <summary>The household's shopping list.</summary>
+    public ShoppingViewModel Shopping { get; }
 
     /// <summary>Your own tasks plus everyone's shared chores.</summary>
     public ObservableCollection<TaskRowViewModel> MyTasks { get; } = [];
@@ -175,6 +183,7 @@ public partial class HomeViewModel : ViewModelBase
         }
 
         _session.Reminders.Check(_household, _session.Now);
+        _session.PantryAlerts.Check(_household, _session.Now);
         _session.ScheduleReminders(_household, _me);
         UpdateUnreadCount();
     }
@@ -274,8 +283,11 @@ public partial class HomeViewModel : ViewModelBase
         _household = _session.Households.Get(_household.Id) ?? _household;
         _shownDay = _session.Today;
         _session.Reminders.Check(_household, _session.Now);
+        _session.PantryAlerts.Check(_household, _session.Now);
         _session.ScheduleReminders(_household, _me);
         UpdateUnreadCount();
+        Pantry?.Refresh();
+        Shopping?.Refresh();
 
         MyTasks.Clear();
         var filter = FilterText.Trim();

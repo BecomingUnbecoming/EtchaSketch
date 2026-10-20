@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using EtchaSketch.Data.Notifications;
+using EtchaSketch.Data.Pantry;
 using EtchaSketch.Data.Profiles;
 using EtchaSketch.Data.Storage;
 using EtchaSketch.Data.Sync;
@@ -44,6 +45,8 @@ public sealed class AppSession : IDisposable
         Tasks = new TaskRepository(connection);
         Notifications = new NotificationRepository(connection);
         Reminders = new Reminders(Tasks, Notifications);
+        Pantry = new PantryRepository(connection);
+        PantryAlerts = new PantryAlerts(Pantry, Notifications);
         Locks = new ProfileLocks(connection);
 
         if (_settings.Get(SyncServerSetting) is { } address && Uri.TryCreate(address, UriKind.Absolute, out var server))
@@ -59,6 +62,12 @@ public sealed class AppSession : IDisposable
     public NotificationRepository Notifications { get; }
 
     public Reminders Reminders { get; }
+
+    /// <summary>The household's stock and shopping list.</summary>
+    public PantryRepository Pantry { get; }
+
+    /// <summary>Warns when something in stock is about to go off.</summary>
+    public PantryAlerts PantryAlerts { get; }
 
     /// <summary>Each person's PIN on this device.</summary>
     public ProfileLocks Locks { get; }

@@ -364,7 +364,10 @@ public sealed class SyncEngineTests : IAsyncLifetime
             Reminders = new Reminders(Tasks, Notifications);
             Sync = new SyncEngine(_db, server, Clock);
             Locks = new ProfileLocks(_db, iterations: 1_000);
+            Pantry = new Data.Pantry.PantryRepository(_db);
         }
+
+        public Data.Pantry.PantryRepository Pantry { get; }
 
         public ManualClock Clock { get; } = new(Wednesday);
 
@@ -541,5 +544,22 @@ public sealed class SyncEngineTests : IAsyncLifetime
 
         Add(_desktop, "Later", PrivacyTier.Household);
         Assert.Equal(1, (await _desktop.Sync.SyncAsync()).Sent);
+    }
+
+    [Fact]
+    public async Task A_shopping_line_ticked_on_one_phone_is_ticked_on_the_other_and_stock_follows()
+    {
+        var milk = _desktop.Pantry.AddStock(new Core.Pantry.StockItem { HouseholdId = _home.Id, Name = "Milk", Amount = 0, LowAt = 1 });
+        _desktop.Pantry.AddLowToList(_home.Id);
+        await _desktop.Sync.SyncAsync();
+        var robinsPhone = await JoinAs(_robin, "robin-phone");
+        var kaisPhone = await JoinAs(_kai, "kai-phone");
+
+        robinsPhone.Pantry.Tick(Assert.Single(robinsPhone.Pantry.ShoppingList(_home.Id)).Id, Wednesday);
+        await robinsPhone.Sync.SyncAsync();
+        await kaisPhone.Sync.SyncAsync();
+
+        Assert.NotNull(Assert.Single(kaisPhone.Pantry.ShoppingList(_home.Id)).BoughtAt);
+        Assert.Equal(1, kaisPhone.Pantry.GetStock(milk.Id)!.Amount);
     }
 }

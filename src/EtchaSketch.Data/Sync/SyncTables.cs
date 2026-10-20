@@ -64,10 +64,18 @@ internal sealed record SyncTable(
 
         new("devices", "SELECT * FROM devices", ["id"], (row, _) => SyncScopes.Household(row["household_id"])),
 
+        // The pantry is the household's. Anything marked more private stays on the device it was made on.
+        new("stock_items", "SELECT * FROM stock_items", ["id"], (row, _) => SharedOnly(row)),
+
+        new("shopping_items", "SELECT * FROM shopping_items", ["id"], (row, _) => SharedOnly(row)),
+
         new("quiet_hours", "SELECT * FROM quiet_hours", ["profile_id"], (row, _) => SyncScopes.Person(row["profile_id"])),
 
         new("notifications", "SELECT * FROM notifications", ["id"], (row, _) => SyncScopes.Person(row["recipient_id"])),
     ];
+
+    private static string? SharedOnly(IReadOnlyDictionary<string, object?> row) =>
+        Convert.ToInt32(row["tier"]) <= (int)PrivacyTier.Household ? SyncScopes.Household(row["household_id"]) : null;
 }
 
 internal static class SyncScopes

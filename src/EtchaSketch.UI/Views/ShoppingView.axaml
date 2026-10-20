@@ -1,0 +1,43 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:EtchaSketch.UI.ViewModels"
+             x:Class="EtchaSketch.UI.Views.ShoppingView"
+             x:DataType="vm:ShoppingViewModel">
+    <UserControl.Styles>
+        <Style Selector="TextBlock.bought">
+            <Setter Property="TextDecorations" Value="Strikethrough" />
+            <Setter Property="Opacity" Value="0.6" />
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer>
+        <StackPanel Spacing="10" Margin="0,8,0,0">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <TextBox Text="{Binding NewLine}" PlaceholderText="Add to the list" />
+                <Button Grid.Column="1" Content="Add" Command="{Binding AddCommand}" Classes="accent" IsDefault="True" />
+            </Grid>
+            <TextBlock Text="{Binding Message}" TextWrapping="Wrap"
+                       IsVisible="{Binding Message, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            <TextBlock Text="The list is empty." Opacity="0.7" IsVisible="{Binding IsEmpty}" />
+
+            <ItemsControl ItemsSource="{Binding Lines}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ShoppingRowViewModel">
+                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10" Margin="0,0,0,6">
+                            <CheckBox IsChecked="{Binding IsBought, Mode=OneWay}" Command="{Binding ToggleCommand}" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Name}" TextWrapping="Wrap" Classes.bought="{Binding IsBought}" />
+                                <TextBlock Text="{Binding AmountText}" FontSize="12" Opacity="0.7"
+                                           IsVisible="{Binding AmountText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                            </StackPanel>
+                            <Button Grid.Column="2" Content="Remove" FontSize="12" Command="{Binding DeleteCommand}" />
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <Button Content="Clear ticked" Command="{Binding ClearBoughtCommand}" HorizontalAlignment="Left" />
+            <TextBlock Text="Ticking something that came from the pantry puts it back in stock." FontSize="12" Opacity="0.7" TextWrapping="Wrap" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

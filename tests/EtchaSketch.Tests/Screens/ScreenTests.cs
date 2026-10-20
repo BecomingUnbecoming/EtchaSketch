@@ -568,4 +568,71 @@ public sealed class ScreenTests : IDisposable
         Assert.Equal("Made 1 link.", home.Import.LinkLinesResult);
         Assert.Equal("Waiting on Install the SDK", home.MyTasks.Single(row => row.Title == "Build the APK").WaitingText);
     }
+
+    [Fact]
+    public void Stock_can_be_added_used_edited_and_sent_to_the_shopping_list()
+    {
+        var home = SetUp(Launch());
+        var pantry = home.Pantry;
+        pantry.Name = "Milk";
+        pantry.Amount = 2;
+        pantry.Unit = "bottles";
+        pantry.Location = "Fridge";
+        pantry.BestBefore = new DateTime(2026, 10, 23);
+        pantry.LowAt = 1;
+        pantry.SaveCommand.Execute(null);
+
+        var milk = Assert.Single(pantry.Items);
+        Assert.Equal(("Milk", "2 bottles"), (milk.Name, milk.AmountText));
+        Assert.Equal("Fridge · goes off Fri 23 Oct", milk.Details);
+        Assert.True(milk.IsExpiring);
+
+        milk.UseCommand.Execute(null);
+        Assert.Equal("1 bottles", pantry.Items.Single().AmountText);
+        Assert.Contains("running low", pantry.Items.Single().Details, StringComparison.Ordinal);
+
+        pantry.AddLowToListCommand.Execute(null);
+        Assert.Equal("Added 1 thing to the shopping list.", pantry.Message);
+        Assert.Equal(["Milk"], home.Shopping.Lines.Select(line => line.Name));
+
+        pantry.Items.Single().EditCommand.Execute(null);
+        Assert.True(pantry.IsEditing);
+        pantry.Name = "Oat milk";
+        pantry.SaveCommand.Execute(null);
+        Assert.Equal("Oat milk", pantry.Items.Single().Name);
+        Assert.False(pantry.IsEditing);
+    }
+
+    [Fact]
+    public void The_shopping_list_ticks_things_off_and_puts_stock_back()
+    {
+        var home = SetUp(Launch());
+        home.Pantry.Name = "Rice";
+        home.Pantry.Amount = 0;
+        home.Pantry.SaveCommand.Execute(null);
+        home.Pantry.Items.Single().AddToListCommand.Execute(null);
+        home.Shopping.NewLine = "Bread";
+        home.Shopping.AddCommand.Execute(null);
+
+        Assert.Equal(["Rice", "Bread"], home.Shopping.Lines.Select(line => line.Name));
+        home.Shopping.Lines.Single(line => line.Name == "Rice").ToggleCommand.Execute(null);
+
+        Assert.True(home.Shopping.Lines.Single(line => line.Name == "Rice").IsBought);
+        Assert.Equal("1", home.Pantry.Items.Single().AmountText);
+        home.Shopping.ClearBoughtCommand.Execute(null);
+        Assert.Equal(["Bread"], home.Shopping.Lines.Select(line => line.Name));
+    }
+
+    [Fact]
+    public void Something_about_to_go_off_shows_in_the_notifications()
+    {
+        var home = SetUp(Launch());
+        home.Pantry.Name = "Yoghurt";
+        home.Pantry.BestBefore = new DateTime(2026, 10, 22);
+        home.Pantry.SaveCommand.Execute(null);
+
+        home.OpenNotificationsCommand.Execute(null);
+
+        Assert.Contains(home.Notifications!.Items, row => row.Title == "Yoghurt goes off tomorrow");
+    }
 }
