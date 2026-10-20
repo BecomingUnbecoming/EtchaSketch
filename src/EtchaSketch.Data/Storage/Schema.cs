@@ -227,6 +227,34 @@ public static class Schema
 
         CREATE INDEX shopping_items_by_household ON shopping_items (household_id);
         """,
+
+        // 11: recipes and the meal plan, shared with the household. Ingredients are kept with their
+        // recipe as JSON, so a recipe always syncs whole.
+        """
+        CREATE TABLE recipes (
+            id TEXT PRIMARY KEY,
+            household_id TEXT NOT NULL REFERENCES households (id),
+            name TEXT NOT NULL,
+            servings INTEGER,
+            instructions TEXT,
+            ingredients TEXT NOT NULL,
+            tier INTEGER NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE planned_meals (
+            id TEXT PRIMARY KEY,
+            household_id TEXT NOT NULL REFERENCES households (id),
+            day TEXT NOT NULL,
+            meal TEXT NOT NULL,
+            recipe_id TEXT,
+            title TEXT NOT NULL,
+            cooked_at TEXT,
+            tier INTEGER NOT NULL
+        );
+
+        CREATE INDEX planned_meals_by_day ON planned_meals (household_id, day);
+        """,
     ];
 
     /// <summary>The version a fully upgraded database reports.</summary>

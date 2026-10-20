@@ -119,4 +119,76 @@ public sealed class PantryTests : IDisposable
         Assert.Contains(feed, n => n.Title == "Yoghurt is past its best-before date");
         Assert.DoesNotContain(feed, n => n.Title.StartsWith("Rice", StringComparison.Ordinal) || n.Title.StartsWith("Empty", StringComparison.Ordinal));
     }
+
+    [Theory]
+    [InlineData("200 g rice", "rice", "200", "g")]
+    [InlineData("2 eggs", "eggs", "2", null)]
+    [InlineData("1,5 l milk", "milk", "1.5", "l")]
+    [InlineData("salt", "salt", null, null)]
+    [InlineData("3 garlic cloves", "garlic cloves", "3", null)]
+    public void Ingredient_lines_are_read_into_amount_unit_and_name(string line, string name, string? amount, string? unit)
+    {
+        var ingredient = Ingredient.Parse(line);
+
+        Assert.Equal((name, amount is null ? (decimal?)null : decimal.Parse(amount, CultureInfo.InvariantCulture), unit),
+            (ingredient.Name, ingredient.Amount, ingredient.Unit));
+    }
+
+    private Recipe Curry(MealRepository meals) => meals.AddRecipe(new Recipe
+    {
+        HouseholdId = _home.Id, Name = "Curry", Servings = 4,
+        Ingredients = [Ingredient.Parse("300 g rice"), Ingredient.Parse("1 can coconut milk"), Ingredient.Parse("2 onions"), Ingredient.Parse("salt")],
+    });
+
+    [Fact]
+    public void Planning_a_recipe_puts_exactly_what_is_missing_on_the_list_once()
+    {
+        var meals = new MealRepository(_db, _pantry);
+        Stock("Rice", 1000, unit: "g");
+        Stock("Onions", 1);
+        Stock("Salt", 1, unit: "jar");
+        var curry = Curry(meals);
+
+        var (meal, added) = meals.Plan(new PlannedMeal { HouseholdId = _home.Id, Day = Today, RecipeId = curry.Id, Title = "" });
+        var (_, again) = meals.Plan(new PlannedMeal { HouseholdId = _home.Id, Day = Today.AddDays(1), RecipeId = curry.Id, Title = "" });
+
+        Assert.Equal("Curry", meal.Title);
+        Assert.Equal([("coconut milk", 1m, "can"), ("Onions", 1m, null)], added.Select(line => (line.Name, line.Amount!.Value, line.Unit)));
+        Assert.Empty(again);
+        Assert.Equal(2, meals.Meals(_home.Id, Today, Today.AddDays(6)).Count);
+    }
+
+    [Fact]
+    public void Cooking_takes_the_ingredients_out_of_stock_once()
+    {
+        var meals = new MealRepository(_db, _pantry);
+        var rice = Stock("Rice", 1000, unit: "g");
+        var onions = Stock("Onions", 5);
+        var salt = Stock("Salt", 1, unit: "jar");
+        var curry = Curry(meals);
+        var (meal, _) = meals.Plan(new PlannedMeal { HouseholdId = _home.Id, Day = Today, RecipeId = curry.Id, Title = "" });
+
+        meals.Cook(meal.Id, Wednesday);
+        meals.Cook(meal.Id, Wednesday);
+
+        Assert.Equal(700, _pantry.GetStock(rice.Id)!.Amount);
+        Assert.Equal(3, _pantry.GetStock(onions.Id)!.Amount);
+        Assert.Equal(1, _pantry.GetStock(salt.Id)!.Amount);
+        Assert.NotNull(meals.Meals(_home.Id, Today, Today).Single().CookedAt);
+    }
+
+    [Fact]
+    public void A_meal_without_a_recipe_needs_a_name_and_deleting_a_recipe_keeps_planned_meals()
+    {
+        var meals = new MealRepository(_db, _pantry);
+        Assert.Throws<ArgumentException>(() => meals.Plan(new PlannedMeal { HouseholdId = _home.Id, Day = Today, Title = " " }));
+        var curry = Curry(meals);
+        meals.Plan(new PlannedMeal { HouseholdId = _home.Id, Day = Today, Meal = Meal.Lunch, Title = "Takeaway" });
+        meals.Plan(new PlannedMeal { HouseholdId = _home.Id, Day = Today, RecipeId = curry.Id, Title = "" });
+
+        meals.DeleteRecipe(curry.Id);
+
+        Assert.Equal([("Takeaway", Meal.Lunch), ("Curry", Meal.Dinner)], meals.Meals(_home.Id, Today, Today).Select(m => (m.Title, m.Meal)));
+        Assert.Empty(meals.Recipes(_home.Id));
+    }
 }

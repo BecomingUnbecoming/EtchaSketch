@@ -635,4 +635,32 @@ public sealed class ScreenTests : IDisposable
 
         Assert.Contains(home.Notifications!.Items, row => row.Title == "Yoghurt goes off tomorrow");
     }
+
+    [Fact]
+    public void A_recipe_is_added_planned_and_cooked_from_the_meals_tab()
+    {
+        var home = SetUp(Launch());
+        home.Pantry.Name = "Rice";
+        home.Pantry.Amount = 1000;
+        home.Pantry.Unit = "g";
+        home.Pantry.SaveCommand.Execute(null);
+
+        var meals = home.Meals;
+        meals.RecipeName = "Fried rice";
+        meals.RecipeServings = 2;
+        meals.RecipeIngredients = "300 g rice\n2 eggs\nsoy sauce";
+        meals.SaveRecipeCommand.Execute(null);
+        Assert.Equal(("Fried rice", "2 servings · 3 ingredients"), (meals.Recipes.Single().Name, meals.Recipes.Single().Summary));
+
+        meals.PlanRecipe = meals.RecipeChoices.Single(choice => choice.Label == "Fried rice");
+        meals.PlanCommand.Execute(null);
+        Assert.Equal("Fried rice is planned. Added to the shopping list: eggs, soy sauce.", meals.Message);
+        Assert.Equal(["eggs", "soy sauce"], home.Shopping.Lines.Select(line => line.Name));
+
+        var today = meals.Week[0];
+        Assert.Equal(("Today", "Dinner: Fried rice"), (today.Day, today.Meals.Single().Text));
+        today.Meals.Single().CookCommand.Execute(null);
+        Assert.True(home.Meals.Week[0].Meals.Single().IsCooked);
+        Assert.Equal("700 g", home.Pantry.Items.Single().AmountText);
+    }
 }

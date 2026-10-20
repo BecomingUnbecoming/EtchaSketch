@@ -32,6 +32,7 @@ public partial class HomeViewModel : ViewModelBase
         CanLock = session.Locks.HasPin(me.Id);
         Pantry = new PantryViewModel(session, household, Refresh);
         Shopping = new ShoppingViewModel(session, household, Refresh);
+        Meals = new MealsViewModel(session, household, Refresh);
         Refresh();
         CompleteRequestedTasks();
     }
@@ -65,6 +66,9 @@ public partial class HomeViewModel : ViewModelBase
 
     /// <summary>The household's shopping list.</summary>
     public ShoppingViewModel Shopping { get; }
+
+    /// <summary>The week's meals and the household's recipes.</summary>
+    public MealsViewModel Meals { get; }
 
     /// <summary>Your own tasks plus everyone's shared chores.</summary>
     public ObservableCollection<TaskRowViewModel> MyTasks { get; } = [];
@@ -288,6 +292,7 @@ public partial class HomeViewModel : ViewModelBase
         UpdateUnreadCount();
         Pantry?.Refresh();
         Shopping?.Refresh();
+        Meals?.Refresh();
 
         MyTasks.Clear();
         var filter = FilterText.Trim();

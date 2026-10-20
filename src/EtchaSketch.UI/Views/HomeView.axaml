@@ -88,6 +88,9 @@
                 <TabItem Header="Shopping">
                     <ContentControl Content="{Binding Shopping}" />
                 </TabItem>
+                <TabItem Header="Meals">
+                    <ContentControl Content="{Binding Meals}" />
+                </TabItem>
                 <TabItem Header="Pantry">
                     <ContentControl Content="{Binding Pantry}" />
                 </TabItem>
