@@ -21,6 +21,8 @@
                 <TextBlock Text="{Binding HeldText}" Opacity="0.7" TextWrapping="Wrap"
                            IsVisible="{Binding HeldText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                 <TextBlock Text="Nothing new." Opacity="0.7" IsVisible="{Binding IsEmpty}" />
+                <TextBlock Text="{Binding SnoozedText}" Opacity="0.7" TextWrapping="Wrap"
+                           IsVisible="{Binding SnoozedText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
                 <ItemsControl ItemsSource="{Binding Items}">
                     <ItemsControl.ItemTemplate>
@@ -32,6 +34,10 @@
                                         <TextBlock Text="{Binding Title}" TextWrapping="Wrap" Classes.unread="{Binding IsUnread}" />
                                         <TextBlock Text="{Binding Body}" FontSize="12" Opacity="0.7" TextWrapping="Wrap"
                                                    IsVisible="{Binding HasBody}" />
+                                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
+                                            <Button Content="Snooze 10 min" FontSize="12" Command="{Binding SnoozeTenMinutesCommand}" />
+                                            <Button Content="Snooze 1 hour" FontSize="12" Command="{Binding SnoozeAnHourCommand}" />
+                                        </StackPanel>
                                     </StackPanel>
                                     <TextBlock Grid.Column="1" Text="{Binding WhenText}" FontSize="12" Opacity="0.7" />
                                 </Grid>

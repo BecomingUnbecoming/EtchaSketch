@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -32,11 +33,10 @@ public partial class NotificationCenterViewModel : ViewModelBase
 
         var now = session.Now;
         var feed = session.Notifications.Feed(me.Id, now);
-        Items = feed.Shown
+        Items = new ObservableCollection<NotificationRowViewModel>(feed.Shown
             .Select(notification => PrivacyGateway.Project(notification, Audience.ForProfile(me.Id)))
             .OfType<GatewayView>()
-            .Select(Row)
-            .ToList();
+            .Select(Row));
         HeldText = feed.HeldUntil is { } until
             ? $"{feed.HeldCount} {(feed.HeldCount == 1 ? "notification" : "notifications")} held until {Clock(until)}"
             : null;
@@ -50,7 +50,7 @@ public partial class NotificationCenterViewModel : ViewModelBase
         session.Notifications.MarkAllRead(me.Id, now);
     }
 
-    public IReadOnlyList<NotificationRowViewModel> Items { get; }
+    public ObservableCollection<NotificationRowViewModel> Items { get; }
 
     public bool IsEmpty => Items.Count == 0;
 
@@ -66,8 +66,22 @@ public partial class NotificationCenterViewModel : ViewModelBase
     [ObservableProperty]
     public partial TimeSpan? QuietEnd { get; set; }
 
+    /// <summary>Says when a snoozed notification will come back, until the feed is reopened.</summary>
+    [ObservableProperty]
+    public partial string? SnoozedText { get; private set; }
+
     [RelayCommand]
     private void Close() => _close();
+
+    private void Snooze(NotificationRowViewModel row, TimeSpan delay)
+    {
+        var now = _session.Now;
+        var until = now + delay;
+        _session.Notifications.Snooze(row.Id, until, now);
+        Items.Remove(row);
+        SnoozedText = $"Snoozed until {Clock(until)}: {row.Title}";
+        OnPropertyChanged(nameof(IsEmpty));
+    }
 
     partial void OnQuietHoursEnabledChanged(bool value) => SaveQuietHours();
 
@@ -94,10 +108,12 @@ public partial class NotificationCenterViewModel : ViewModelBase
     {
         var deliveredAt = view.TryGetValue(nameof(Notification.DeliverAt), out var at) && at is DateTimeOffset time ? time : _session.Now;
         return new NotificationRowViewModel(
+            view.TryGetValue(nameof(Notification.Id), out var id) && id is Guid guid ? guid : Guid.Empty,
             view.TryGetValue(nameof(Notification.Title), out var title) ? title as string ?? "" : "",
             view.TryGetValue(nameof(Notification.Body), out var body) ? body as string : null,
             WhenText(deliveredAt),
-            view.TryGetValue(nameof(Notification.ReadAt), out var read) && read is null);
+            view.TryGetValue(nameof(Notification.ReadAt), out var read) && read is null,
+            Snooze);
     }
 
     private string WhenText(DateTimeOffset time)

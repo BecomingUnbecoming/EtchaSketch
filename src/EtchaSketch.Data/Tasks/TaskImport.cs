@@ -36,6 +36,12 @@ public sealed record ImportedTask
 
     /// <summary>Remind this many days before the due date.</summary>
     public int? RemindDaysBefore { get; init; }
+
+    /// <summary>A time of day on the due date, like 14:05.</summary>
+    public string? DueTime { get; init; }
+
+    /// <summary>Also remind this many minutes before the due time.</summary>
+    public int? RemindMinutesBefore { get; init; }
 }
 
 public sealed record ImportedRepeat(int Every, string Unit);
@@ -159,6 +165,14 @@ public static class TaskImport
                 : throw new ArgumentException($"\"{item.Due}\" isn't a date like 2026-10-21.");
         }
 
+        TimeOnly? dueTime = null;
+        if (!string.IsNullOrWhiteSpace(item.DueTime))
+        {
+            dueTime = TimeOnly.TryParseExact(item.DueTime.Trim(), "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed)
+                ? parsed
+                : throw new ArgumentException($"\"{item.DueTime}\" isn't a time like 14:05.");
+        }
+
         var lines = new List<string>();
         if (!string.IsNullOrWhiteSpace(item.Notes))
         {
@@ -194,6 +208,8 @@ public static class TaskImport
             Project = item.Project,
             Labels = item.Labels?.Where(label => !string.IsNullOrWhiteSpace(label)).ToList() ?? [],
             RemindDaysBefore = item.RemindDaysBefore,
+            DueTime = dueTime,
+            RemindMinutesBefore = item.RemindMinutesBefore,
             Tier = item.Shared ? PrivacyTier.Household : PrivacyTier.Private,
         };
     }

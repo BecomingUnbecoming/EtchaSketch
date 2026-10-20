@@ -49,6 +49,15 @@ public partial class TaskEditorViewModel : ViewModelBase
             .. new[] { (int?)null, 1, 2, 3, 7 }.Union([existing?.RemindDaysBefore]).OrderBy(days => days ?? 0).Select(RemindOption.For),
         ];
         Reminder = ReminderOptions.Single(option => option.Days == existing?.RemindDaysBefore);
+
+        DueTime = existing?.DueTime?.ToTimeSpan();
+        MinutesOptions =
+        [
+            .. new[] { (int?)null, 5, 10, 15, 30, 60, 120 }.Union([existing?.RemindMinutesBefore])
+                .OrderBy(minutes => minutes ?? 0).Select(MinutesOption.For),
+        ];
+        RemindBefore = MinutesOptions.Single(option => option.Minutes == existing?.RemindMinutesBefore);
+        IsAlarm = existing?.Alarm ?? false;
     }
 
     public string Heading => _existing is null ? "New task" : "Edit task";
@@ -74,7 +83,30 @@ public partial class TaskEditorViewModel : ViewModelBase
     public partial string? Notes { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanHaveTime))]
     public partial DateTime? DueDate { get; set; }
+
+    /// <summary>A time needs a date to belong to.</summary>
+    public bool CanHaveTime => DueDate is not null;
+
+    /// <summary>An optional time of day on the due date. With one, reminders come at that time.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasTime))]
+    public partial TimeSpan? DueTime { get; set; }
+
+    public bool HasTime => DueTime is not null;
+
+    public IReadOnlyList<MinutesOption> MinutesOptions { get; }
+
+    [ObservableProperty]
+    public partial MinutesOption RemindBefore { get; set; }
+
+    /// <summary>Remind like an alarm: louder on a phone, and it comes through quiet hours.</summary>
+    [ObservableProperty]
+    public partial bool IsAlarm { get; set; }
+
+    [RelayCommand]
+    private void ClearTime() => DueTime = null;
 
     [ObservableProperty]
     public partial TaskPriority Priority { get; set; }
@@ -122,6 +154,10 @@ public partial class TaskEditorViewModel : ViewModelBase
                 // The copy shown to a non-owner has its notes removed, so keep the stored ones.
                 Notes = CanEditNotes ? Notes : _session.Tasks.Get(_existing!.Id)?.Notes,
                 Due = DueDate is { } due ? DateOnly.FromDateTime(due) : null,
+                // Without a date there's no time, and without a time no minutes-before reminder or alarm.
+                DueTime = DueDate is not null && DueTime is { } time ? TimeOnly.FromTimeSpan(time) : null,
+                RemindMinutesBefore = DueDate is not null && DueTime is not null ? RemindBefore.Minutes : null,
+                Alarm = DueDate is not null && DueTime is not null && IsAlarm,
                 Priority = Priority,
                 Tier = IsShared ? PrivacyTier.Household : PrivacyTier.Private,
                 Recurrence = Repeat.Frequency is { } frequency
@@ -161,6 +197,19 @@ public sealed record RepeatOption(string Label, RecurrenceFrequency? Frequency)
 
 public sealed record AssigneeOption(string Label, Guid? ProfileId)
 {
+    public override string ToString() => Label;
+}
+
+public sealed record MinutesOption(string Label, int? Minutes)
+{
+    public static MinutesOption For(int? minutes) => minutes switch
+    {
+        null => new("Only at the time", null),
+        60 => new("Also an hour before", 60),
+        var n when n % 60 == 0 => new($"Also {n / 60} hours before", n),
+        var n => new($"Also {n} minutes before", n),
+    };
+
     public override string ToString() => Label;
 }
 

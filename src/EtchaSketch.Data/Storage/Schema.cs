@@ -139,6 +139,14 @@ public static class Schema
         ALTER TABLE tasks ADD COLUMN labels TEXT;
         ALTER TABLE tasks ADD COLUMN remind_days_before INTEGER;
         """,
+
+        // 7: a time of day on the due date, a reminder some minutes before it, and alarm-strength
+        // reminders. They sync with the task.
+        """
+        ALTER TABLE tasks ADD COLUMN due_time TEXT;
+        ALTER TABLE tasks ADD COLUMN remind_minutes_before INTEGER;
+        ALTER TABLE tasks ADD COLUMN alarm INTEGER NOT NULL DEFAULT 0;
+        """,
     ];
 
     /// <summary>The version a fully upgraded database reports.</summary>

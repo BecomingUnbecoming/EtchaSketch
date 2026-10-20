@@ -17,6 +17,19 @@
                 <CalendarDatePicker SelectedDate="{Binding DueDate}" HorizontalAlignment="Stretch"
                                     PlaceholderText="No due date" />
 
+                <StackPanel Spacing="6" IsVisible="{Binding CanHaveTime}">
+                    <TextBlock Text="Time (optional)" />
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <TimePicker SelectedTime="{Binding DueTime}" ClockIdentifier="24HourClock" HorizontalAlignment="Stretch"
+                                    ToolTip.Tip="With a time, reminders come at that time instead of first thing" />
+                        <Button Grid.Column="1" Content="No time" Command="{Binding ClearTimeCommand}" IsVisible="{Binding HasTime}" />
+                    </Grid>
+                    <ComboBox ItemsSource="{Binding MinutesOptions}" SelectedItem="{Binding RemindBefore}" HorizontalAlignment="Stretch"
+                              IsVisible="{Binding HasTime}" />
+                    <CheckBox Content="Alarm (louder, and comes through quiet hours)" IsChecked="{Binding IsAlarm}"
+                              IsVisible="{Binding HasTime}" />
+                </StackPanel>
+
                 <TextBlock Text="Remind me" />
                 <ComboBox ItemsSource="{Binding ReminderOptions}" SelectedItem="{Binding Reminder}" HorizontalAlignment="Stretch"
                           ToolTip.Tip="You're always reminded on the day it's due" />

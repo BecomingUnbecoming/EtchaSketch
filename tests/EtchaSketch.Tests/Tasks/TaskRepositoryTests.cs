@@ -230,4 +230,27 @@ public sealed class TaskRepositoryTests : IDisposable
 
         Assert.Throws<ArgumentException>(() => _tasks.Add(NewChore("Bins", neighbours.Members[0])));
     }
+
+    [Fact]
+    public void A_due_time_its_reminder_and_the_alarm_read_back_and_are_checked()
+    {
+        var task = _tasks.Add(NewTask("Vet") with
+        {
+            Due = new DateOnly(2026, 10, 30), DueTime = new TimeOnly(14, 5, 42), RemindMinutesBefore = 15, Alarm = true,
+        });
+
+        var read = _tasks.Get(task.Id)!;
+        Assert.Equal(new TimeOnly(14, 5), read.DueTime);
+        Assert.Equal(15, read.RemindMinutesBefore);
+        Assert.True(read.Alarm);
+        Assert.Equal(new DateTime(2026, 10, 30, 14, 5, 0), read.DueAt);
+
+        Assert.Throws<ArgumentException>(() => _tasks.Add(NewTask("No date") with { DueTime = new TimeOnly(9, 0) }));
+        Assert.Throws<ArgumentException>(() => _tasks.Add(NewTask("No time") with { Due = new DateOnly(2026, 10, 30), RemindMinutesBefore = 10 }));
+        Assert.Throws<ArgumentException>(() => _tasks.Add(NewTask("Alarm") with { Due = new DateOnly(2026, 10, 30), Alarm = true }));
+        Assert.Throws<ArgumentException>(() => _tasks.Add(NewTask("Too early") with
+        {
+            Due = new DateOnly(2026, 10, 30), DueTime = new TimeOnly(9, 0), RemindMinutesBefore = 24 * 60 + 1,
+        }));
+    }
 }

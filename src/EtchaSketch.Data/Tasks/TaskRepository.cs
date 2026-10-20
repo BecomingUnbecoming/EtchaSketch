@@ -10,7 +10,7 @@ namespace EtchaSketch.Data.Tasks;
 public sealed class TaskRepository(SqliteConnection connection)
 {
     private const string Columns =
-        "id, household_id, owner_id, title, notes, due, priority, assignee_id, recurrence_frequency, recurrence_interval, completed_at, tier, project, labels, remind_days_before";
+        "id, household_id, owner_id, title, notes, due, priority, assignee_id, recurrence_frequency, recurrence_interval, completed_at, tier, project, labels, remind_days_before, due_time, remind_minutes_before, alarm";
 
     // Open tasks first by due date (undated last), then most urgent first, then oldest first.
     private const string Order = "ORDER BY due IS NULL, due, priority DESC, rowid";
@@ -19,6 +19,7 @@ public sealed class TaskRepository(SqliteConnection connection)
     public const int MaxLabels = 20;
     public const int MaxLabelLength = 40;
     public const int MaxRemindDays = 60;
+    public const int MaxRemindMinutes = 24 * 60;
 
     private static readonly string ParameterList = string.Join(", ", Columns.Split(", ").Select(column => "$" + column));
 
@@ -39,7 +40,8 @@ public sealed class TaskRepository(SqliteConnection connection)
                 due = $due, priority = $priority, assignee_id = $assignee_id,
                 recurrence_frequency = $recurrence_frequency, recurrence_interval = $recurrence_interval,
                 completed_at = $completed_at, tier = $tier, project = $project, labels = $labels,
-                remind_days_before = $remind_days_before
+                remind_days_before = $remind_days_before, due_time = $due_time,
+                remind_minutes_before = $remind_minutes_before, alarm = $alarm
             WHERE id = $id
             """,
             Parameters(task));
@@ -169,7 +171,33 @@ public sealed class TaskRepository(SqliteConnection connection)
             throw new ArgumentException($"An early reminder is 1 to {MaxRemindDays} days before the due date.", nameof(task));
         }
 
-        return task with { Title = title, Project = string.IsNullOrEmpty(project) ? null : project, Labels = labels };
+        if (task.DueTime is not null && task.Due is null)
+        {
+            throw new ArgumentException("Give the task a due date before giving it a time.", nameof(task));
+        }
+
+        if (task.RemindMinutesBefore is { } minutes)
+        {
+            if (task.DueTime is null)
+            {
+                throw new ArgumentException("A reminder some minutes before needs a due time.", nameof(task));
+            }
+
+            if (minutes is < 1 or > MaxRemindMinutes)
+            {
+                throw new ArgumentException($"A reminder before the due time is 1 minute to {MaxRemindMinutes / 60} hours before.", nameof(task));
+            }
+        }
+
+        if (task.Alarm && task.DueTime is null)
+        {
+            throw new ArgumentException("An alarm needs a due time.", nameof(task));
+        }
+
+        // Times are kept to the minute, so a reminder can't be keyed to a second nobody can see.
+        var dueTime = task.DueTime is { } time ? new TimeOnly(time.Hour, time.Minute) : (TimeOnly?)null;
+
+        return task with { Title = title, Project = string.IsNullOrEmpty(project) ? null : project, Labels = labels, DueTime = dueTime };
     }
 
     private List<Guid> MemberIds(Guid householdId)
@@ -203,6 +231,9 @@ public sealed class TaskRepository(SqliteConnection connection)
         ("$project", task.Project),
         ("$labels", task.Labels.Count == 0 ? null : JsonSerializer.Serialize(task.Labels)),
         ("$remind_days_before", task.RemindDaysBefore),
+        ("$due_time", task.DueTime?.ToString("HH:mm", CultureInfo.InvariantCulture)),
+        ("$remind_minutes_before", task.RemindMinutesBefore),
+        ("$alarm", task.Alarm ? 1 : 0),
     ];
 
     private List<TaskItem> Query(string sql, params (string Name, object? Value)[] parameters)
@@ -230,6 +261,9 @@ public sealed class TaskRepository(SqliteConnection connection)
                 Project = reader.IsDBNull(12) ? null : reader.GetString(12),
                 Labels = reader.IsDBNull(13) ? [] : JsonSerializer.Deserialize<List<string>>(reader.GetString(13)) ?? [],
                 RemindDaysBefore = reader.IsDBNull(14) ? null : reader.GetInt32(14),
+                DueTime = reader.IsDBNull(15) ? null : TimeOnly.ParseExact(reader.GetString(15), "HH:mm", CultureInfo.InvariantCulture),
+                RemindMinutesBefore = reader.IsDBNull(16) ? null : reader.GetInt32(16),
+                Alarm = reader.GetInt32(17) != 0,
             });
         }
 
