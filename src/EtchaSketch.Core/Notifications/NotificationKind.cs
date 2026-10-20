@@ -9,4 +9,5 @@ public enum NotificationKind
     Overdue,
     AssignedToYou,
     Expiring,
+    WarrantyEnding,
 }
