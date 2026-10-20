@@ -90,6 +90,13 @@ public partial class HomeViewModel : ViewModelBase
 
     public bool IsShowingImport => Import is not null;
 
+    /// <summary>The export panel, or null when it is closed.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsShowingExport))]
+    public partial ExportViewModel? Export { get; private set; }
+
+    public bool IsShowingExport => Export is not null;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(NotificationsLabel))]
     public partial int UnreadCount { get; private set; }
@@ -171,6 +178,9 @@ public partial class HomeViewModel : ViewModelBase
             Refresh();
         }
     }, imported: Refresh);
+
+    [RelayCommand]
+    private void OpenExport() => Export = new ExportViewModel(_session, _household, _me, () => Export = null);
 
     [RelayCommand]
     private void OpenSync() => Sync = new SyncViewModel(_session, _household.Id, Synced, () => Sync = null);

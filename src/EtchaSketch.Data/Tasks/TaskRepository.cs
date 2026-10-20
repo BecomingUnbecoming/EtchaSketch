@@ -96,15 +96,23 @@ public sealed class TaskRepository(SqliteConnection connection)
     /// The open tasks one person may see: everything they own, plus everyone's shared tasks. Other
     /// people's Private tasks, and the notes on their shared ones, are never read out at all.
     /// </summary>
-    public IReadOnlyList<TaskItem> VisibleTo(Guid profileId) => Query(
+    public IReadOnlyList<TaskItem> VisibleTo(Guid profileId) => Visible(profileId, includeFinished: false);
+
+    /// <summary>
+    /// Everything one person may take away in an export: what <see cref="VisibleTo"/> shows, plus
+    /// finished tasks under the same rules.
+    /// </summary>
+    public IReadOnlyList<TaskItem> ExportableBy(Guid profileId) => Visible(profileId, includeFinished: true);
+
+    private List<TaskItem> Visible(Guid profileId, bool includeFinished) => Query(
         $"""
         SELECT {Columns} FROM tasks
         WHERE household_id = (SELECT household_id FROM profiles WHERE id = $profile)
-          AND completed_at IS NULL
+          AND ($finished OR completed_at IS NULL)
           AND (owner_id = $profile OR tier <= $shared)
         {Order}
         """,
-        ("$profile", profileId.ToString()), ("$shared", (int)PrivacyTier.Household))
+        ("$profile", profileId.ToString()), ("$shared", (int)PrivacyTier.Household), ("$finished", includeFinished ? 1 : 0))
         .Select(task => task.OwnerId == profileId ? task : task with { Notes = null })
         .ToList();
 

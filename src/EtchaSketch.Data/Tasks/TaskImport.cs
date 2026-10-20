@@ -42,6 +42,9 @@ public sealed record ImportedTask
 
     /// <summary>Also remind this many minutes before the due time.</summary>
     public int? RemindMinutesBefore { get; init; }
+
+    /// <summary>Remind like an alarm. Needs a due time.</summary>
+    public bool? Alarm { get; init; }
 }
 
 public sealed record ImportedRepeat(int Every, string Unit);
@@ -107,6 +110,7 @@ public static class TaskImport
             .ToHashSet(StringComparer.Ordinal);
 
         int added = 0, already = 0, finished = 0;
+        var seenIds = new HashSet<Guid>();
         var problems = new List<string>();
         foreach (var (item, number) in imported.Select((item, index) => (item, index + 1)))
         {
@@ -116,7 +120,17 @@ public static class TaskImport
                 continue;
             }
 
-            var sourceLine = string.IsNullOrWhiteSpace(item.Source) ? null : SourcePrefix + item.Source.Trim();
+            // A task exported from EtchaSketch comes back as itself (same id, notes unchanged), so
+            // importing your own export restores it rather than adding a copy.
+            Guid? ownId = item.Source?.Trim() is { } source && source.StartsWith(TaskExport.SourcePrefix, StringComparison.Ordinal)
+                && Guid.TryParse(source[TaskExport.SourcePrefix.Length..], out var parsed) ? parsed : null;
+            if (ownId is { } existing && (tasks.Get(existing) is not null || !seenIds.Add(existing)))
+            {
+                already++;
+                continue;
+            }
+
+            var sourceLine = ownId is not null || string.IsNullOrWhiteSpace(item.Source) ? null : SourcePrefix + item.Source.Trim();
             if (sourceLine is not null && known.Contains(sourceLine))
             {
                 already++;
@@ -126,6 +140,11 @@ public static class TaskImport
             try
             {
                 var task = ToTask(item, sourceLine, householdId, ownerId);
+                if (ownId is { } id)
+                {
+                    task = task with { Id = id };
+                }
+
                 if (!dryRun)
                 {
                     tasks.Add(task);
@@ -210,6 +229,7 @@ public static class TaskImport
             RemindDaysBefore = item.RemindDaysBefore,
             DueTime = dueTime,
             RemindMinutesBefore = item.RemindMinutesBefore,
+            Alarm = item.Alarm == true,
             Tier = item.Shared ? PrivacyTier.Household : PrivacyTier.Private,
         };
     }

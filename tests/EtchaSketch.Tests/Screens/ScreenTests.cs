@@ -478,4 +478,22 @@ public sealed class ScreenTests : IDisposable
         Assert.Empty(home.MyTasks);
         Assert.Empty(ReminderActions.TakeCompletions());
     }
+
+    [Fact]
+    public void Export_builds_each_kind_of_file_with_a_dated_name()
+    {
+        var home = SetUp(Launch());
+        AddTask(home, "Vet", editor => editor.DueDate = new DateTime(2026, 10, 30));
+
+        home.OpenExportCommand.Execute(null);
+        var export = home.Export!;
+
+        Assert.Equal("etchasketch-robin-2026-10-21.json", export.FileName(ExportKind.Everything));
+        Assert.Contains("\"title\": \"Vet\"", export.Build(ExportKind.Everything), StringComparison.Ordinal);
+        Assert.StartsWith("Title,Done,Due", export.Build(ExportKind.Spreadsheet), StringComparison.Ordinal);
+        Assert.Contains("SUMMARY:Vet", export.Build(ExportKind.Calendar), StringComparison.Ordinal);
+
+        export.CloseCommand.Execute(null);
+        Assert.False(home.IsShowingExport);
+    }
 }

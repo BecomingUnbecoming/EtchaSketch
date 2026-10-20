@@ -1,0 +1,42 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:EtchaSketch.UI.ViewModels"
+             x:Class="EtchaSketch.UI.Views.ExportView"
+             x:DataType="vm:ExportViewModel">
+    <Border MaxWidth="480" Margin="16" Padding="20" CornerRadius="12" VerticalAlignment="Center"
+            Background="{DynamicResource SolidBackgroundFillColorBaseBrush}">
+        <ScrollViewer>
+            <StackPanel Spacing="10">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Text="Export" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <Button Grid.Column="1" Content="Close" Command="{Binding CloseCommand}" />
+                </Grid>
+
+                <TextBlock TextWrapping="Wrap" Opacity="0.8"
+                           Text="Save a copy of your tasks and the household's shared ones. Other people's private tasks and notes are never included." />
+
+                <Button HorizontalAlignment="Stretch" Click="Everything_Click">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="Everything" FontWeight="SemiBold" />
+                        <TextBlock Text="A file EtchaSketch can import again: a backup, or moving to a new device" FontSize="12" Opacity="0.7" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Button>
+                <Button HorizontalAlignment="Stretch" Click="Spreadsheet_Click">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="Spreadsheet" FontWeight="SemiBold" />
+                        <TextBlock Text="One row per task, for LibreOffice, Excel or anything else" FontSize="12" Opacity="0.7" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Button>
+                <Button HorizontalAlignment="Stretch" Click="Calendar_Click">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="Calendar" FontWeight="SemiBold" />
+                        <TextBlock Text="Open tasks with a due date, as events with their reminders" FontSize="12" Opacity="0.7" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Button>
+
+                <TextBlock Text="{Binding Status}" TextWrapping="Wrap"
+                           IsVisible="{Binding Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            </StackPanel>
+        </ScrollViewer>
+    </Border>
+</UserControl>
