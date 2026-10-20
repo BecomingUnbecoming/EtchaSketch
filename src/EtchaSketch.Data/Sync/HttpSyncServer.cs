@@ -59,6 +59,54 @@ public sealed class HttpSyncServer(HttpClient http) : ISyncServer
         return (await response.Content.ReadFromJsonAsync<PairingRequest>(cancellationToken))?.Data;
     }
 
+    private bool? _supportsDevices;
+
+    public async Task<bool> SupportsDevicesAsync(CancellationToken cancellationToken = default)
+    {
+        if (_supportsDevices is { } known)
+        {
+            return known;
+        }
+
+        using var response = await http.GetAsync("v1/features", cancellationToken);
+        _supportsDevices = response.IsSuccessStatusCode
+                           && (await response.Content.ReadFromJsonAsync<ServerFeatures>(cancellationToken))?.Devices == true;
+        return _supportsDevices.Value;
+    }
+
+    public Task<DeviceOutcome> RegisterDeviceAsync(string streamId, string authToken, string deviceId, string deviceToken, CancellationToken cancellationToken = default) =>
+        DeviceRequestAsync(HttpMethod.Put, $"v1/streams/{streamId}/devices/{deviceId}", authToken, new TokenRequest(deviceToken), cancellationToken);
+
+    public Task<DeviceOutcome> AddEnrolmentAsync(string streamId, string authToken, string enrolmentToken, CancellationToken cancellationToken = default) =>
+        DeviceRequestAsync(HttpMethod.Post, $"v1/streams/{streamId}/enrolments", authToken, new TokenRequest(enrolmentToken), cancellationToken);
+
+    public Task<DeviceOutcome> RemoveDeviceAsync(string streamId, string authToken, string deviceId, CancellationToken cancellationToken = default) =>
+        DeviceRequestAsync(HttpMethod.Delete, $"v1/streams/{streamId}/devices/{deviceId}", authToken, body: null, cancellationToken);
+
+    private async Task<DeviceOutcome> DeviceRequestAsync(HttpMethod method, string path, string authToken, TokenRequest? body, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(method, path) { Content = body is null ? null : JsonContent.Create(body) };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", authToken);
+        using var response = await http.SendAsync(request, cancellationToken);
+        switch (response.StatusCode)
+        {
+            case HttpStatusCode.NoContent or HttpStatusCode.OK:
+                return DeviceOutcome.Done;
+            case HttpStatusCode.Forbidden:
+                return DeviceOutcome.Denied;
+            case HttpStatusCode.NotFound:
+                return DeviceOutcome.UnknownStream;
+            case HttpStatusCode.Conflict:
+                return DeviceOutcome.LastDevice;
+            case HttpStatusCode.InsufficientStorage:
+                return DeviceOutcome.Full;
+        }
+
+        EnsureNotRefused(response);
+        response.EnsureSuccessStatusCode();
+        return DeviceOutcome.Done;
+    }
+
     private static void EnsureAllowed(HttpResponseMessage response, string streamId)
     {
         if (response.StatusCode == HttpStatusCode.Forbidden)

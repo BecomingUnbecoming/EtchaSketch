@@ -26,6 +26,9 @@ public sealed record SyncLimits
     /// <summary>How many new-device codes may wait to be claimed at once. Each lasts 15 minutes.</summary>
     public int MaxPendingPairings { get; init; } = 20;
 
+    /// <summary>How many devices may have their own token for one stream.</summary>
+    public int MaxDevicesPerStream { get; init; } = 50;
+
     /// <summary>The most requests one address may make a minute.</summary>
     public int RequestsPerMinute { get; init; } = 600;
 

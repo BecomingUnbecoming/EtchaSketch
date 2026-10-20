@@ -62,6 +62,8 @@ internal sealed record SyncTable(
         new("task_comments", "SELECT * FROM task_comments", ["id"],
             (row, taskScopes) => taskScopes.GetValueOrDefault(Convert.ToString(row["task_id"])!)),
 
+        new("devices", "SELECT * FROM devices", ["id"], (row, _) => SyncScopes.Household(row["household_id"])),
+
         new("quiet_hours", "SELECT * FROM quiet_hours", ["profile_id"], (row, _) => SyncScopes.Person(row["profile_id"])),
 
         new("notifications", "SELECT * FROM notifications", ["id"], (row, _) => SyncScopes.Person(row["recipient_id"])),

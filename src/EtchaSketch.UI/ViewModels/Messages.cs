@@ -39,7 +39,7 @@ internal static class Messages
         HttpRequestException or TaskCanceledException =>
             $"Couldn't reach the sync server at {address}. Check the address, and that this device is on your home network or VPN.",
         SyncAccessDeniedException =>
-            "The sync server refused this device's key. Pair it again with a new code from a device that's already set up.",
+            "The sync server didn't accept this device. It may have been removed from the household on another device. To use it again, pair it with a new code from a device that's still set up.",
         CryptographicException =>
             "Something from the sync server didn't match this household's keys, so it was ignored and nothing changed.",
         SyncServerRefusedException refused => refused.Message,

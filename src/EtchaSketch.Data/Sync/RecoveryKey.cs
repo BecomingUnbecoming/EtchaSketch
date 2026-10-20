@@ -5,7 +5,8 @@ using System.Text.Json;
 namespace EtchaSketch.Data.Sync;
 
 /// <summary>What a recovery key opens into: who the device was for, and every sync key it held.</summary>
-public sealed record RecoveryContents(Guid ProfileId, IReadOnlyDictionary<string, byte[]> Keys, string? JoinToken = null);
+/// <param name="DeviceToken">The key's own device token with the sync server, so it works after a device is removed. Older keys have none.</param>
+public sealed record RecoveryContents(Guid ProfileId, IReadOnlyDictionary<string, byte[]> Keys, string? JoinToken = null, string? DeviceToken = null);
 
 /// <summary>
 /// The sync keys, locked under a passphrase and written as text, so they can be kept somewhere
@@ -38,7 +39,7 @@ public static class RecoveryKey
         RandomNumberGenerator.Fill(header.AsSpan(0, SaltBytes));
         BitConverter.TryWriteBytes(header.AsSpan(SaltBytes), iterations);
 
-        var body = JsonSerializer.SerializeToUtf8Bytes(new Body(contents.ProfileId, new Dictionary<string, byte[]>(contents.Keys), contents.JoinToken));
+        var body = JsonSerializer.SerializeToUtf8Bytes(new Body(contents.ProfileId, new Dictionary<string, byte[]>(contents.Keys), contents.JoinToken, contents.DeviceToken));
         var sealedBody = SealedBox.Seal(Stretch(passphrase, header, iterations), body, header);
         return Prefix + SealedBox.Base64Url([.. header, .. sealedBody]);
     }
@@ -77,7 +78,7 @@ public static class RecoveryKey
 
         var body = SealedBox.Open(Stretch(passphrase ?? "", header, iterations), bytes[HeaderBytes..], header);
         var parsed = JsonSerializer.Deserialize<Body>(body) ?? throw new InvalidDataException("The recovery key held no keys.");
-        return new RecoveryContents(parsed.ProfileId, parsed.Keys, parsed.JoinToken);
+        return new RecoveryContents(parsed.ProfileId, parsed.Keys, parsed.JoinToken, parsed.DeviceToken);
     }
 
     private static byte[] Stretch(string passphrase, byte[] header, int iterations) =>
@@ -89,5 +90,5 @@ public static class RecoveryKey
         return Convert.FromBase64String(padded.PadRight(padded.Length + (4 - padded.Length % 4) % 4, '='));
     }
 
-    private sealed record Body(Guid ProfileId, Dictionary<string, byte[]> Keys, string? JoinToken = null);
+    private sealed record Body(Guid ProfileId, Dictionary<string, byte[]> Keys, string? JoinToken = null, string? DeviceToken = null);
 }

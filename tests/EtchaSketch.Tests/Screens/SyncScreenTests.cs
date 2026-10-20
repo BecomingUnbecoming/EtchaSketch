@@ -38,7 +38,8 @@ public sealed class SyncScreenTests : IAsyncLifetime
             Path.Combine(_directory, device, "etchasketch.db"),
             _keys.TryGetValue(device, out var keys) ? keys : _keys[device] = new InMemoryKeyStore(),
             new FixedClock(new DateTimeOffset(2026, 10, 21, 9, 0, 0, TimeSpan.Zero)),
-            server ?? (_ => _server.Client())));
+            server ?? (_ => _server.Client()),
+            DeviceName: device));
         _apps.Add(app);
         return app;
     }
@@ -336,5 +337,36 @@ public sealed class SyncScreenTests : IAsyncLifetime
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
             throw new HttpRequestException("No route to host");
+    }
+
+    [Fact]
+    public async Task A_lost_device_can_be_removed_from_the_sync_screen()
+    {
+        var desktop = SetUp(Launch("desktop"));
+        var sync = await TurnOnSync(desktop);
+        var code = await Invite(sync, "Kai");
+        var phone = Launch("kai-phone");
+        await TryJoin(phone, code);
+        var kai = Assert.IsType<HomeViewModel>(phone.CurrentPage);
+
+        desktop.OpenSyncCommand.Execute(null);
+        sync = desktop.Sync!;
+        await sync.SyncNowCommand.ExecuteAsync(null);
+        Assert.Equal(2, sync.Devices.Count);
+        Assert.Single(sync.Devices, device => device.Details == "This device" && !device.CanRemove);
+        var lost = Assert.Single(sync.Devices, device => device.CanRemove);
+        Assert.StartsWith("Kai's · added ", lost.Details, StringComparison.Ordinal);
+
+        lost.AskToRemoveCommand.Execute(null);
+        Assert.True(lost.IsConfirming);
+        await lost.ConfirmRemoveCommand.ExecuteAsync(null);
+
+        Assert.Null(sync.ErrorMessage);
+        Assert.StartsWith("Kai-phone is removed", sync.RemovalMessage ?? "", StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith("Removed ", sync.Devices.Single(device => device.Name == lost.Name).Details, StringComparison.Ordinal);
+
+        kai.OpenSyncCommand.Execute(null);
+        await kai.Sync!.SyncNowCommand.ExecuteAsync(null);
+        Assert.Contains("didn't accept this device", kai.Sync.ErrorMessage ?? "", StringComparison.Ordinal);
     }
 }

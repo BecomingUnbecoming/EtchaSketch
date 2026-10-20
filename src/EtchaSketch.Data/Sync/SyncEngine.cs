@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using EtchaSketch.Core.Sync;
 using EtchaSketch.Data.Profiles;
 using EtchaSketch.Data.Storage;
 using Microsoft.Data.Sqlite;
@@ -94,7 +95,8 @@ public sealed class SyncEngine(SqliteConnection connection, ISyncServer server, 
         await SyncAsync(cancellationToken);
 
         var code = PairingCode.New();
-        var bundle = JsonSerializer.SerializeToUtf8Bytes(new PairingBundle(profileId, keys, JoinToken));
+        var passes = await EnrolmentsAsync(keys.Keys, cancellationToken);
+        var bundle = JsonSerializer.SerializeToUtf8Bytes(new PairingBundle(profileId, keys, JoinToken, passes));
         await Remote().PutPairingAsync(code.PairingId, code.Seal(bundle), cancellationToken);
         return code.Text;
     }
@@ -119,7 +121,7 @@ public sealed class SyncEngine(SqliteConnection connection, ISyncServer server, 
         var bundle = JsonSerializer.Deserialize<PairingBundle>(code.Open(sealedBundle))
                      ?? throw new InvalidDataException("The pairing held no keys.");
 
-        return await TakeAsync(bundle.ProfileId, bundle.Keys, bundle.JoinToken, cancellationToken);
+        return await TakeAsync(bundle.ProfileId, bundle.Keys, bundle.JoinToken, bundle.Enrolments, cancellationToken);
     }
 
     /// <summary>
@@ -142,7 +144,13 @@ public sealed class SyncEngine(SqliteConnection connection, ISyncServer server, 
             throw new InvalidOperationException("Sync is off, so there are no keys to keep. Turn on sync first.");
         }
 
-        return RecoveryKey.Create(passphrase, new RecoveryContents(profileId, keys, JoinToken), iterations);
+        // The key carries its own device token, registered with the server on the next sync, so it
+        // still opens the household after a device has been removed (when shared tokens stop working).
+        var recoveryDevice = "recovery-" + Guid.NewGuid().ToString("N")[..16];
+        var recoveryToken = SealedBox.Base64Url(RandomNumberGenerator.GetBytes(32));
+        SaveSetting(RecoveryDeviceKey, recoveryDevice);
+        SaveSetting(RecoveryTokenKey, recoveryToken);
+        return RecoveryKey.Create(passphrase, new RecoveryContents(profileId, keys, JoinToken, recoveryToken), iterations);
     }
 
     /// <summary>
@@ -154,8 +162,243 @@ public sealed class SyncEngine(SqliteConnection connection, ISyncServer server, 
     public async Task<Guid> RestoreAsync(string recoveryKey, string passphrase, CancellationToken cancellationToken = default)
     {
         var contents = RecoveryKey.Open(passphrase, recoveryKey);
-        return await TakeAsync(contents.ProfileId, contents.Keys, contents.JoinToken, cancellationToken);
+        var passes = contents.DeviceToken is { } token ? contents.Keys.Keys.ToDictionary(scope => scope, _ => token) : null;
+        if (contents.DeviceToken is { } keyToken)
+        {
+            // Make sure the key's own token is known to the server, in case it never got there.
+            SaveSetting(RecoveryDeviceKey, "recovery-" + Guid.NewGuid().ToString("N")[..16]);
+            SaveSetting(RecoveryTokenKey, keyToken);
+        }
+
+        return await TakeAsync(contents.ProfileId, contents.Keys, contents.JoinToken, passes, cancellationToken);
     }
+
+    private const string DeviceTokenKey = "sync_device_token";
+    private const string RecoveryTokenKey = "sync_recovery_token";
+    private const string RecoveryDeviceKey = "sync_recovery_device";
+
+    /// <summary>What this device is called in the household's device list. Defaults to the machine's name.</summary>
+    public string DeviceName { get; set; } = Environment.MachineName;
+
+    /// <summary>This device's id, as the household's device list and the server know it.</summary>
+    public string ThisDeviceId => DeviceId();
+
+    /// <summary>Every device that has synced in this household, newest first, including removed ones.</summary>
+    public IReadOnlyList<KnownDevice> Devices(Guid householdId)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id, profile_id, name, added_at, removed_at FROM devices WHERE household_id = $household ORDER BY added_at DESC, rowid DESC";
+        command.Parameters.AddWithValue("$household", householdId.ToString());
+        using var reader = command.ExecuteReader();
+        var devices = new List<KnownDevice>();
+        while (reader.Read())
+        {
+            devices.Add(new KnownDevice(
+                reader.GetString(0),
+                reader.IsDBNull(1) ? null : Guid.Parse(reader.GetString(1)),
+                reader.GetString(2),
+                DateTimeOffset.Parse(reader.GetString(3), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+                reader.IsDBNull(4) ? null : DateTimeOffset.Parse(reader.GetString(4), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+                reader.GetString(0) == DeviceId()));
+        }
+
+        return devices;
+    }
+
+    /// <summary>
+    /// Cuts a lost or given-away device off the household: the server stops accepting it on every
+    /// stream this device holds, and it's marked removed in the device list. It keeps what it had
+    /// already downloaded. A stream this device doesn't hold (someone else's private one) has to be
+    /// cut from one of that person's devices; those are counted in the result.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The server can't remove devices yet, or this device isn't set up on every stream.</exception>
+    public async Task<DeviceRemoval> RemoveDeviceAsync(string deviceId, CancellationToken cancellationToken = default)
+    {
+        if (deviceId == DeviceId())
+        {
+            throw new InvalidOperationException("This is the device you're using. Remove it from another device.");
+        }
+
+        if (!await Remote().SupportsDevicesAsync(cancellationToken))
+        {
+            throw new InvalidOperationException("This sync server is too old to remove a single device. Update it first; see docs/sync-server.md.");
+        }
+
+        await SyncAsync(cancellationToken);
+
+        var household = Scalar("SELECT household_id FROM devices WHERE id = $id", ("$id", deviceId)) as string;
+        var personScope = Scalar("SELECT profile_id FROM devices WHERE id = $id", ("$id", deviceId)) is string profile ? SyncScopes.Person(profile) : null;
+        // Only the streams that device could reach: the household's, and the private one of whoever used it.
+        var held = HeldScopes();
+        var reachable = new[] { household is null ? null : SyncScopes.Household(household), personScope }.OfType<string>().ToList();
+        int cut = 0, notHeld = reachable.Count(scope => !held.Contains(scope));
+        foreach (var scope in reachable.Where(held.Contains))
+        {
+            var stream = StreamKey.From(KeyFor(scope)!);
+
+            // After a removal the stream only accepts registered devices, so this one has to be one.
+            // A stream the server doesn't have yet is empty, so there's nothing to cut there.
+            if (TokenFor(scope, stream) == stream.AccessToken)
+            {
+                switch (await Remote().RegisterDeviceAsync(stream.StreamId, stream.AccessToken, DeviceId(), DeviceToken(), cancellationToken))
+                {
+                    case DeviceOutcome.Done:
+                        Execute("UPDATE sync_keys SET registered = 1, enrolment = NULL WHERE scope = $scope", ("$scope", scope));
+                        break;
+                    case DeviceOutcome.UnknownStream:
+                        // Nothing there yet. Make the stream now and lock it, so the removed device
+                        // can't open it with the shared token once something is written to it.
+                        await Remote().PushAsync(stream.StreamId, stream.AccessToken, [], cancellationToken);
+                        if (await Remote().RegisterDeviceAsync(stream.StreamId, stream.AccessToken, DeviceId(), DeviceToken(), cancellationToken)
+                            != DeviceOutcome.Done)
+                        {
+                            throw new InvalidOperationException("The sync server wouldn't set this device up. Sync again in a minute, then try once more.");
+                        }
+
+                        Execute("UPDATE sync_keys SET registered = 1, enrolment = NULL WHERE scope = $scope", ("$scope", scope));
+                        break;
+                    default:
+                        throw new InvalidOperationException("This device isn't set up with the sync server for every part of the household yet. Sync again in a minute, then try once more.");
+                }
+            }
+
+            switch (await Remote().RemoveDeviceAsync(stream.StreamId, TokenFor(scope, stream), deviceId, cancellationToken))
+            {
+                case DeviceOutcome.Done:
+                    cut++;
+                    break;
+                case DeviceOutcome.LastDevice:
+                    throw new InvalidOperationException("That's the only device the server knows on part of this household, so removing it would lock everyone out.");
+                case DeviceOutcome.Denied:
+                    throw new SyncAccessDeniedException(stream.StreamId);
+            }
+        }
+
+        if (household is not null)
+        {
+            Execute("UPDATE devices SET removed_at = $now WHERE id = $id AND removed_at IS NULL", ("$id", deviceId), ("$now", Text(_clock.GetUtcNow())));
+            await SyncAsync(cancellationToken);
+        }
+
+        return new DeviceRemoval(cut, notHeld);
+    }
+
+    /// <summary>The token this device uses on a stream: its own once registered, otherwise the stream's shared one.</summary>
+    private string TokenFor(string scope, StreamKey stream) =>
+        Convert.ToInt64(Scalar("SELECT registered FROM sync_keys WHERE scope = $scope", ("$scope", scope))) == 1 ? DeviceToken() : stream.AccessToken;
+
+    private string DeviceToken() => SecretSetting(DeviceTokenKey);
+
+    private string SecretSetting(string key)
+    {
+        if (Setting(key) is { } token)
+        {
+            return token;
+        }
+
+        token = SealedBox.Base64Url(RandomNumberGenerator.GetBytes(32));
+        SaveSetting(key, token);
+        return token;
+    }
+
+    /// <summary>
+    /// Gives this device (and a recovery key made here, if any) its own token on every stream that
+    /// doesn't have one yet. Uses the stream's shared token, or a one-time pass from the device that
+    /// invited it. A server without device tokens is left alone.
+    /// </summary>
+    private async Task RegisterAsync(CancellationToken cancellationToken)
+    {
+        var pending = Strings("SELECT scope FROM sync_keys WHERE registered = 0").ToList();
+        var recovery = Setting(RecoveryTokenKey) is { Length: > 0 } recoveryToken && Setting(RecoveryDeviceKey) is { Length: > 0 } recoveryDevice
+            ? (Device: recoveryDevice, Token: recoveryToken)
+            : ((string Device, string Token)?)null;
+        if ((pending.Count == 0 && recovery is null) || !await Remote().SupportsDevicesAsync(cancellationToken))
+        {
+            return;
+        }
+
+        foreach (var scope in pending)
+        {
+            var stream = StreamKey.From(KeyFor(scope)!);
+            var pass = Scalar("SELECT enrolment FROM sync_keys WHERE scope = $scope", ("$scope", scope)) as string;
+            var outcome = await Remote().RegisterDeviceAsync(stream.StreamId, pass ?? stream.AccessToken, DeviceId(), DeviceToken(), cancellationToken);
+
+            // A pass can be stale (a recovery key whose token never reached the server); the shared
+            // token still works while nothing has been removed from the stream.
+            if (outcome == DeviceOutcome.Denied && pass is not null)
+            {
+                outcome = await Remote().RegisterDeviceAsync(stream.StreamId, stream.AccessToken, DeviceId(), DeviceToken(), cancellationToken);
+            }
+
+            switch (outcome)
+            {
+                case DeviceOutcome.Done:
+                    Execute("UPDATE sync_keys SET registered = 1, enrolment = NULL WHERE scope = $scope", ("$scope", scope));
+                    break;
+                case DeviceOutcome.Denied:
+                    throw new SyncAccessDeniedException(stream.StreamId);
+            }
+        }
+
+        if (recovery is { } key)
+        {
+            var all = true;
+            foreach (var scope in HeldScopes())
+            {
+                var stream = StreamKey.From(KeyFor(scope)!);
+                all &= await Remote().RegisterDeviceAsync(stream.StreamId, TokenFor(scope, stream), key.Device, key.Token, cancellationToken)
+                    == DeviceOutcome.Done;
+            }
+
+            if (all)
+            {
+                SaveSetting(RecoveryTokenKey, "");
+            }
+        }
+    }
+
+    /// <summary>One-time passes for a device being invited, for each stream it will hold. Empty with an older server.</summary>
+    private async Task<Dictionary<string, string>> EnrolmentsAsync(IEnumerable<string> scopes, CancellationToken cancellationToken)
+    {
+        var passes = new Dictionary<string, string>();
+        if (!await Remote().SupportsDevicesAsync(cancellationToken))
+        {
+            return passes;
+        }
+
+        foreach (var scope in scopes)
+        {
+            var stream = StreamKey.From(KeyFor(scope)!);
+            var pass = SealedBox.Base64Url(RandomNumberGenerator.GetBytes(32));
+            if (await Remote().AddEnrolmentAsync(stream.StreamId, TokenFor(scope, stream), pass, cancellationToken) == DeviceOutcome.Done)
+            {
+                passes[scope] = pass;
+            }
+        }
+
+        return passes;
+    }
+
+    // This device's own row in the household's device list, so other devices can see and remove it.
+    private void NoteThisDevice()
+    {
+        var households = new HouseholdRepository(connection);
+        if (households.CurrentProfileId() is not { } profileId || households.HouseholdOf(profileId) is not { } household)
+        {
+            return;
+        }
+
+        Execute(
+            """
+            INSERT INTO devices (id, household_id, profile_id, name, added_at) VALUES ($id, $household, $profile, $name, $now)
+            ON CONFLICT (id) DO UPDATE SET profile_id = excluded.profile_id, name = excluded.name
+            WHERE devices.profile_id IS NOT excluded.profile_id OR devices.name IS NOT excluded.name
+            """,
+            ("$id", DeviceId()), ("$household", household.Id.ToString()), ("$profile", profileId.ToString()),
+            ("$name", string.IsNullOrWhiteSpace(DeviceName) ? "A device" : DeviceName.Trim()), ("$now", Text(_clock.GetUtcNow())));
+    }
+
+    private static string Text(DateTimeOffset time) => time.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture);
 
     private ISyncServer Remote()
     {
@@ -163,7 +406,8 @@ public sealed class SyncEngine(SqliteConnection connection, ISyncServer server, 
         return server;
     }
 
-    private async Task<Guid> TakeAsync(Guid profileId, IReadOnlyDictionary<string, byte[]> keys, string? joinToken, CancellationToken cancellationToken)
+    private async Task<Guid> TakeAsync(Guid profileId, IReadOnlyDictionary<string, byte[]> keys, string? joinToken,
+        IReadOnlyDictionary<string, string>? passes, CancellationToken cancellationToken)
     {
         var households = new HouseholdRepository(connection);
         if (households.All().Count > 0)
@@ -179,17 +423,23 @@ public sealed class SyncEngine(SqliteConnection connection, ISyncServer server, 
                 throw new InvalidDataException("The keys held one this app doesn't recognise.");
             }
 
-            Execute("INSERT INTO sync_keys (scope, key) VALUES ($scope, $key) ON CONFLICT (scope) DO NOTHING", ("$scope", scope), ("$key", key));
+            Execute("INSERT INTO sync_keys (scope, key, enrolment) VALUES ($scope, $key, $pass) ON CONFLICT (scope) DO NOTHING",
+                ("$scope", scope), ("$key", key), ("$pass", (object?)passes?.GetValueOrDefault(scope) ?? DBNull.Value));
         }
 
         SetJoinToken(joinToken);
         await SyncAsync(cancellationToken);
         households.SetCurrentProfile(profileId);
+
+        // Again, now it knows whose it is, so it shows in the household's device list.
+        await SyncAsync(cancellationToken);
         return profileId;
     }
 
     public async Task<SyncResult> SyncAsync(CancellationToken cancellationToken = default)
     {
+        NoteThisDevice();
+        await RegisterAsync(cancellationToken);
         RecordLocalChanges();
 
         // Household streams first, since private rows refer to the people and tasks in them.
@@ -200,6 +450,9 @@ public sealed class SyncEngine(SqliteConnection connection, ISyncServer server, 
         }
 
         var sent = await PushAsync(cancellationToken);
+
+        // A stream this device just created only exists on the server now, so it can be registered.
+        await RegisterAsync(cancellationToken);
         return new SyncResult(sent, received);
     }
 
@@ -271,7 +524,7 @@ public sealed class SyncEngine(SqliteConnection connection, ISyncServer server, 
 
         while (true)
         {
-            var page = await Remote().PullAsync(stream.StreamId, stream.AccessToken, after, cancellationToken);
+            var page = await Remote().PullAsync(stream.StreamId, TokenFor(scope, stream), after, cancellationToken);
             using (var transaction = connection.BeginTransaction())
             {
                 foreach (var change in page.Changes)
@@ -392,7 +645,7 @@ public sealed class SyncEngine(SqliteConnection connection, ISyncServer server, 
                     break;
                 }
 
-                await Remote().PushAsync(stream.StreamId, stream.AccessToken,
+                await Remote().PushAsync(stream.StreamId, TokenFor(scope, stream),
                     batch.Select(entry => stream.Seal(Encoding.UTF8.GetBytes(entry.Change))).ToList(), cancellationToken);
                 Execute("DELETE FROM sync_outbox WHERE scope = $scope AND id <= $last", ("$scope", scope), ("$last", batch[^1].Id));
                 sent += batch.Count;
@@ -603,5 +856,16 @@ public sealed class SyncEngine(SqliteConnection connection, ISyncServer server, 
     private sealed record SyncRecord(string Table, string Key, string Scope, string Version, string? Hash);
 
     /// <summary>What a pairing code carries: who the new device is for, and the keys they need.</summary>
-    private sealed record PairingBundle(Guid ProfileId, Dictionary<string, byte[]> Keys, string? JoinToken = null);
+    private sealed record PairingBundle(Guid ProfileId, Dictionary<string, byte[]> Keys, string? JoinToken = null,
+        Dictionary<string, string>? Enrolments = null);
 }
+
+/// <summary>A device in the household's list.</summary>
+/// <param name="ProfileId">Who last used it.</param>
+/// <param name="RemovedAt">When it was cut off, or null while it's in use.</param>
+public sealed record KnownDevice(string Id, Guid? ProfileId, string Name, DateTimeOffset AddedAt, DateTimeOffset? RemovedAt, bool IsThisDevice);
+
+/// <summary>What removing a device did.</summary>
+/// <param name="StreamsCut">How many streams the server stopped accepting it on.</param>
+/// <param name="StreamsNotHeld">Streams this device can't cut it from (someone else's private one).</param>
+public sealed record DeviceRemoval(int StreamsCut, int StreamsNotHeld);

@@ -28,11 +28,13 @@ public sealed class AppSession : IDisposable
     public static readonly TimeSpan ReminderHorizon = TimeSpan.FromDays(14);
 
     private readonly IReminderScheduler? _reminderScheduler;
+    private readonly string? _deviceName;
 
     private AppSession(SqliteConnection connection, TimeProvider clock, Func<Uri, ISyncServer> syncServers, IDeviceUnlock? deviceUnlock,
-        IReminderScheduler? reminderScheduler)
+        IReminderScheduler? reminderScheduler, string? deviceName)
     {
         _connection = connection;
+        _deviceName = deviceName;
         _reminderScheduler = reminderScheduler;
         DeviceUnlock = deviceUnlock;
         _clock = clock;
@@ -100,7 +102,7 @@ public sealed class AppSession : IDisposable
 
         return new AppSession(connection, environment.Clock ?? TimeProvider.System,
             environment.SyncServerFactory ?? (address => new HttpSyncServer(new HttpClient { BaseAddress = address, Timeout = TimeSpan.FromSeconds(30) })),
-            environment.DeviceUnlock, environment.ReminderScheduler);
+            environment.DeviceUnlock, environment.ReminderScheduler, environment.DeviceName);
     }
 
     /// <summary>
@@ -172,7 +174,7 @@ public sealed class AppSession : IDisposable
         {
             _settings.Set(SyncServerSetting, address.ToString());
             SyncServerAddress = address;
-            Sync = new SyncEngine(_connection, _syncServers(address), _clock);
+            Sync = new SyncEngine(_connection, _syncServers(address), _clock) { DeviceName = _deviceName ?? Environment.MachineName };
         }
 
         return Sync!;

@@ -55,7 +55,26 @@ public sealed class SyncStore : IDisposable
                 data BLOB NOT NULL,
                 expires_at TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS stream_devices (
+                stream_id TEXT NOT NULL REFERENCES streams (id),
+                device_id TEXT NOT NULL,
+                token_hash BLOB NOT NULL,
+                PRIMARY KEY (stream_id, device_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS stream_enrolments (
+                stream_id TEXT NOT NULL REFERENCES streams (id),
+                token_hash BLOB NOT NULL,
+                expires_at TEXT NOT NULL
+            );
             """);
+
+        // Servers from before device removal have no "locked" column yet.
+        if (Scalar("SELECT 1 FROM pragma_table_info('streams') WHERE name = 'locked'") is null)
+        {
+            Execute("ALTER TABLE streams ADD COLUMN locked INTEGER NOT NULL DEFAULT 0");
+        }
     }
 
     /// <summary>
@@ -169,6 +188,108 @@ public sealed class SyncStore : IDisposable
         }
     }
 
+    /// <summary>
+    /// Gives a device its own token for a stream. Allowed with any token that already works on the
+    /// stream, or once with a pass an existing device left for it (see <see cref="AddEnrolment"/>).
+    /// </summary>
+    public DeviceResult RegisterDevice(string streamId, string authToken, string deviceId, string deviceToken)
+    {
+        lock (_gate)
+        {
+            using var transaction = _connection.BeginTransaction();
+            switch (Check(streamId, authToken))
+            {
+                case Access.Unknown:
+                    return DeviceResult.UnknownStream;
+                case Access.Denied when !TakeEnrolment(streamId, authToken):
+                    return DeviceResult.Denied;
+            }
+
+            var count = Convert.ToInt64(Scalar("SELECT COUNT(*) FROM stream_devices WHERE stream_id = $id AND device_id <> $device",
+                ("$id", streamId), ("$device", deviceId)), CultureInfo.InvariantCulture);
+            if (count >= _limits.MaxDevicesPerStream)
+            {
+                return DeviceResult.Full;
+            }
+
+            Execute(
+                """
+                INSERT INTO stream_devices (stream_id, device_id, token_hash) VALUES ($id, $device, $hash)
+                ON CONFLICT (stream_id, device_id) DO UPDATE SET token_hash = excluded.token_hash
+                """,
+                ("$id", streamId), ("$device", deviceId), ("$hash", Hash(deviceToken)));
+            transaction.Commit();
+            return DeviceResult.Done;
+        }
+    }
+
+    /// <summary>Leaves a one-time pass a new device can use to register itself, for fifteen minutes.</summary>
+    public DeviceResult AddEnrolment(string streamId, string authToken, string enrolmentToken)
+    {
+        lock (_gate)
+        {
+            switch (Check(streamId, authToken))
+            {
+                case Access.Unknown:
+                    return DeviceResult.UnknownStream;
+                case Access.Denied:
+                    return DeviceResult.Denied;
+            }
+
+            Execute("DELETE FROM stream_enrolments WHERE expires_at <= $now", ("$now", Text(_clock.GetUtcNow())));
+            var waiting = Convert.ToInt64(Scalar("SELECT COUNT(*) FROM stream_enrolments WHERE stream_id = $id", ("$id", streamId)),
+                CultureInfo.InvariantCulture);
+            if (waiting >= _limits.MaxPendingPairings)
+            {
+                return DeviceResult.Full;
+            }
+
+            Execute("INSERT INTO stream_enrolments (stream_id, token_hash, expires_at) VALUES ($id, $hash, $expires)",
+                ("$id", streamId), ("$hash", Hash(enrolmentToken)), ("$expires", Text(_clock.GetUtcNow() + PairingLifetime)));
+            return DeviceResult.Done;
+        }
+    }
+
+    /// <summary>
+    /// Cuts a device off a stream. From then on the stream only accepts registered devices' own
+    /// tokens, so a removed device can't get back in with the stream's shared token either.
+    /// </summary>
+    public DeviceResult RemoveDevice(string streamId, string authToken, string deviceId)
+    {
+        lock (_gate)
+        {
+            using var transaction = _connection.BeginTransaction();
+            switch (Check(streamId, authToken))
+            {
+                case Access.Unknown:
+                    return DeviceResult.UnknownStream;
+                case Access.Denied:
+                    return DeviceResult.Denied;
+            }
+
+            var others = Convert.ToInt64(Scalar("SELECT COUNT(*) FROM stream_devices WHERE stream_id = $id AND device_id <> $device",
+                ("$id", streamId), ("$device", deviceId)), CultureInfo.InvariantCulture);
+            if (others == 0)
+            {
+                // Locking a stream with nobody registered would leave it unreachable for good.
+                return DeviceResult.LastDevice;
+            }
+
+            Execute("DELETE FROM stream_devices WHERE stream_id = $id AND device_id = $device", ("$id", streamId), ("$device", deviceId));
+            Execute("UPDATE streams SET locked = 1 WHERE id = $id", ("$id", streamId));
+            transaction.Commit();
+            return DeviceResult.Done;
+        }
+    }
+
+    private bool TakeEnrolment(string streamId, string enrolmentToken)
+    {
+        Execute("DELETE FROM stream_enrolments WHERE expires_at <= $now", ("$now", Text(_clock.GetUtcNow())));
+        using var command = Command("DELETE FROM stream_enrolments WHERE stream_id = $id AND token_hash = $hash RETURNING 1",
+            ("$id", streamId), ("$hash", Hash(enrolmentToken)));
+        return command.ExecuteScalar() is not null;
+    }
+
     public void Dispose()
     {
         lock (_gate)
@@ -181,15 +302,34 @@ public sealed class SyncStore : IDisposable
         }
     }
 
+    // A token works on a stream if it is a registered device's own, or the stream's shared token
+    // while no device has ever been removed from it.
     private Access Check(string streamId, string accessToken)
     {
-        using var command = Command("SELECT token_hash FROM streams WHERE id = $id", ("$id", streamId));
-        return command.ExecuteScalar() switch
+        var hash = Hash(accessToken);
+        using (var command = Command("SELECT token_hash, locked FROM streams WHERE id = $id", ("$id", streamId)))
+        using (var reader = command.ExecuteReader())
         {
-            byte[] stored when CryptographicOperations.FixedTimeEquals(stored, Hash(accessToken)) => Access.Allowed,
-            byte[] => Access.Denied,
-            _ => Access.Unknown,
-        };
+            if (!reader.Read())
+            {
+                return Access.Unknown;
+            }
+
+            if (reader.GetInt64(1) == 0 && CryptographicOperations.FixedTimeEquals((byte[])reader.GetValue(0), hash))
+            {
+                return Access.Allowed;
+            }
+        }
+
+        using var devices = Command("SELECT token_hash FROM stream_devices WHERE stream_id = $id", ("$id", streamId));
+        using var rows = devices.ExecuteReader();
+        var allowed = false;
+        while (rows.Read())
+        {
+            allowed |= CryptographicOperations.FixedTimeEquals((byte[])rows.GetValue(0), hash);
+        }
+
+        return allowed ? Access.Allowed : Access.Denied;
     }
 
     private object? Scalar(string sql, params (string Name, object Value)[] parameters)
@@ -239,6 +379,16 @@ public enum PushResult
     TooLarge,
     NoRoom,
     NeedsJoinToken,
+}
+
+/// <summary>What happened to a request about a stream's devices.</summary>
+public enum DeviceResult
+{
+    Done,
+    Denied,
+    UnknownStream,
+    LastDevice,
+    Full,
 }
 
 /// <summary>What happened to a new-device code left on the server.</summary>

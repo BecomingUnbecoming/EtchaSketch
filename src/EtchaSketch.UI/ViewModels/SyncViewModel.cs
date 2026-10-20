@@ -72,6 +72,13 @@ public partial class SyncViewModel : ViewModelBase
     /// <summary>One "Add a device" button per person, once sync is on.</summary>
     public ObservableCollection<PersonInvite> Invites { get; } = [];
 
+    /// <summary>Every device that has synced in this household, so a lost one can be removed.</summary>
+    public ObservableCollection<DeviceRowViewModel> Devices { get; } = [];
+
+    /// <summary>What the last removal did, or null.</summary>
+    [ObservableProperty]
+    public partial string? RemovalMessage { get; private set; }
+
     [RelayCommand]
     private async Task TurnOn()
     {
@@ -116,6 +123,16 @@ public partial class SyncViewModel : ViewModelBase
         PairingHint = $"Enter this code on {person.DisplayName}'s device within 15 minutes. It works once.";
     }, () => _session.SyncServerAddress);
 
+    private Task Remove(KnownDevice device) => Run(async () =>
+    {
+        var removal = await _session.Sync!.RemoveDeviceAsync(device.Id);
+        RemovalMessage = $"{device.Name} is removed and can't sync any more. It keeps what it had already downloaded, protected only by its PIN. "
+            + "Make a new recovery key below, so your key keeps working with this change."
+            + (removal.StreamsNotHeld > 0
+                ? $" Its owner's private tasks are kept with keys only their own devices hold, so remove it from one of their devices too."
+                : "");
+    }, () => _session.SyncServerAddress);
+
     private async Task Run(Func<Task> action, Func<Uri?> address)
     {
         ErrorMessage = null;
@@ -131,6 +148,8 @@ public partial class SyncViewModel : ViewModelBase
         Update();
     }
 
+    private string Day(DateTimeOffset time) => _session.Local(time).ToString("d MMM", CultureInfo.CurrentCulture);
+
     private void Update()
     {
         IsEnabled = _session.IsSyncOn;
@@ -141,14 +160,53 @@ public partial class SyncViewModel : ViewModelBase
                 : "Not synced yet";
 
         Invites.Clear();
+        Devices.Clear();
         if (IsEnabled && _session.Households.Get(_householdId) is { } household)
         {
             foreach (var person in household.Members)
             {
                 Invites.Add(new PersonInvite(person.DisplayName, new AsyncRelayCommand(() => Invite(person))));
             }
+
+            foreach (var device in _session.Sync!.Devices(_householdId))
+            {
+                var owner = household.Members.FirstOrDefault(member => member.Id == device.ProfileId)?.DisplayName;
+                var details = device.RemovedAt is { } removed ? $"Removed {Day(removed)}"
+                    : device.IsThisDevice ? "This device"
+                    : $"{(owner is null ? "" : owner + "'s · ")}added {Day(device.AddedAt)}";
+                Devices.Add(new DeviceRowViewModel(device.Name, details, !device.IsThisDevice && device.RemovedAt is null, () => Remove(device)));
+            }
         }
     }
 }
 
 public sealed record PersonInvite(string Name, IAsyncRelayCommand InviteCommand);
+
+/// <summary>One device in the household's list, with a two-step Remove.</summary>
+public sealed partial class DeviceRowViewModel(string name, string details, bool canRemove, Func<Task> remove) : ViewModelBase
+{
+    public string Name { get; } = name;
+
+    /// <summary>Like "Kai's · added 21 Oct", "This device", or "Removed 22 Oct".</summary>
+    public string Details { get; } = details;
+
+    public bool CanRemove { get; } = canRemove;
+
+    /// <summary>Remove was pressed once; the row now asks to confirm.</summary>
+    [ObservableProperty]
+    public partial bool IsConfirming { get; private set; }
+
+    [RelayCommand]
+    private void AskToRemove() => IsConfirming = true;
+
+    [RelayCommand]
+    private void CancelRemove() => IsConfirming = false;
+
+    [RelayCommand]
+    private Task ConfirmRemove()
+    {
+        IsConfirming = false;
+        return remove();
+    }
+}
+

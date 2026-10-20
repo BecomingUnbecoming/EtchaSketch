@@ -177,6 +177,23 @@ public static class Schema
 
         CREATE INDEX task_comments_by_task ON task_comments (task_id, created_at);
         """,
+
+        // 9: devices. Each device gets its own token with the sync server for every stream it
+        // holds, so one lost device can be cut off without changing anyone else's. The household
+        // keeps a list of its devices (it syncs) so any of them can remove another.
+        """
+        ALTER TABLE sync_keys ADD COLUMN registered INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE sync_keys ADD COLUMN enrolment TEXT;
+
+        CREATE TABLE devices (
+            id TEXT PRIMARY KEY,
+            household_id TEXT NOT NULL REFERENCES households (id),
+            profile_id TEXT REFERENCES profiles (id),
+            name TEXT NOT NULL,
+            added_at TEXT NOT NULL,
+            removed_at TEXT
+        );
+        """,
     ];
 
     /// <summary>The version a fully upgraded database reports.</summary>
