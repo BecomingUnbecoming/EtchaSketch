@@ -6,7 +6,7 @@
     <UserControl.DataTemplates>
         <!-- One task row, used in both the task list and the chore board. -->
         <DataTemplate x:DataType="vm:TaskRowViewModel">
-            <Border Padding="12" Margin="0,0,0,8" CornerRadius="8"
+            <Border Padding="12" Margin="0,0,0,8" CornerRadius="8" Classes.step="{Binding IsStep}"
                     Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1">
                 <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
@@ -17,6 +17,8 @@
                         <TextBlock Text="{Binding DueText}" FontSize="12"
                                    IsVisible="{Binding DueText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                    Classes.overdue="{Binding IsOverdue}" />
+                        <TextBlock Text="{Binding WaitingText}" FontSize="12" FontStyle="Italic" TextWrapping="Wrap"
+                                   IsVisible="{Binding IsWaiting}" />
                         <TextBlock Text="{Binding Details}" FontSize="12" Opacity="0.7" TextWrapping="Wrap"
                                    IsVisible="{Binding Details, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                         <TextBlock Text="{Binding Notes}" FontSize="12" Opacity="0.7" TextWrapping="Wrap"
@@ -32,6 +34,10 @@
     </UserControl.DataTemplates>
 
     <UserControl.Styles>
+        <!-- A step sits indented under the task it belongs to. -->
+        <Style Selector="Border.step">
+            <Setter Property="Margin" Value="28,0,0,8" />
+        </Style>
         <Style Selector="TextBlock.overdue">
             <Setter Property="Foreground" Value="#C42B1C" />
             <Setter Property="FontWeight" Value="SemiBold" />
@@ -56,6 +62,18 @@
             </StackPanel>
 
             <TextBox DockPanel.Dock="Top" Text="{Binding FilterText}" PlaceholderText="Filter by title, project or label" Margin="0,0,0,8" />
+
+            <!-- Asked when finishing a task that's still waiting on another. -->
+            <Border DockPanel.Dock="Top" Padding="12" Margin="0,0,0,8" CornerRadius="8" IsVisible="{Binding IsAskingAboutBlocked}"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="{Binding BlockedQuestion}" TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="Mark it done anyway" Command="{Binding CompleteAnywayCommand}" />
+                        <Button Content="Not yet" Command="{Binding DismissBlockedCommand}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
 
             <TabControl>
                 <TabItem Header="My tasks">

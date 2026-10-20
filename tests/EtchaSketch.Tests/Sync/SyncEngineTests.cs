@@ -382,7 +382,7 @@ public sealed class SyncEngineTests : IAsyncLifetime
         /// <summary>Whether any table on this device holds the text at all.</summary>
         public bool Contains(string text)
         {
-            foreach (var table in new[] { "households", "profiles", "tasks", "task_completions", "notifications", "quiet_hours" })
+            foreach (var table in new[] { "households", "profiles", "tasks", "task_completions", "notifications", "quiet_hours", "task_links", "task_comments" })
             {
                 using var command = _db.CreateCommand();
                 command.CommandText = $"SELECT * FROM {table}";
@@ -434,5 +434,33 @@ public sealed class SyncEngineTests : IAsyncLifetime
         Assert.Equal(new TimeOnly(14, 5), task.DueTime);
         Assert.Equal(30, task.RemindMinutesBefore);
         Assert.True(task.Alarm);
+    }
+
+    [Fact]
+    public async Task Subtasks_links_and_comments_reach_who_may_see_them_and_no_one_else()
+    {
+        var move = Add(_desktop, "Move house", PrivacyTier.Household);
+        var van = _desktop.Tasks.Add(new TaskItem
+        {
+            HouseholdId = _home.Id, OwnerId = _robin.Id, Title = "Book van", Tier = PrivacyTier.Household, ParentId = move.Id,
+        });
+        var surprise = Add(_desktop, "Surprise for Kai");
+        _desktop.Tasks.AddLink(new TaskLink(van.Id, move.Id, TaskLinkKind.Blocks), Wednesday);
+        _desktop.Tasks.AddLink(new TaskLink(surprise.Id, move.Id, TaskLinkKind.Related), Wednesday);
+        _desktop.Tasks.AddComment(move.Id, _robin.Id, "Saturday works", Wednesday);
+        _desktop.Tasks.AddComment(surprise.Id, _robin.Id, "the bakery on 5th", Wednesday);
+        await _desktop.Sync.SyncAsync();
+
+        var kaisPhone = await JoinAs(_kai, "kai-phone");
+        var robinsPhone = await JoinAs(_robin, "robin-phone");
+
+        Assert.Equal(move.Id, kaisPhone.Tasks.Get(van.Id)!.ParentId);
+        Assert.Equal([("Blocked by", "Book van")], kaisPhone.Tasks.LinksOf(move.Id, _kai.Id).Select(link => (link.Label, link.Other.Title)));
+        Assert.Equal("Saturday works", Assert.Single(kaisPhone.Tasks.CommentsOf(move.Id, _kai.Id)).Text);
+        Assert.False(kaisPhone.Contains("the bakery on 5th"));
+        Assert.False(kaisPhone.Contains(surprise.Id.ToString()));
+
+        Assert.Equal(2, robinsPhone.Tasks.LinksOf(move.Id, _robin.Id).Count);
+        Assert.Equal("the bakery on 5th", Assert.Single(robinsPhone.Tasks.CommentsOf(surprise.Id, _robin.Id)).Text);
     }
 }

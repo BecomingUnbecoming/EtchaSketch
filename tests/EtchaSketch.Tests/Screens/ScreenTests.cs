@@ -496,4 +496,76 @@ public sealed class ScreenTests : IDisposable
         export.CloseCommand.Execute(null);
         Assert.False(home.IsShowingExport);
     }
+
+    [Fact]
+    public void A_step_shows_under_its_task_and_the_task_counts_its_steps()
+    {
+        var home = SetUp(Launch());
+        AddTask(home, "Move house");
+        AddTask(home, "Another task");
+        AddTask(home, "Book van", editor => editor.Parent = editor.ParentOptions.Single(option => option.Label == "Move house"));
+
+        Assert.Equal(["Move house", "Book van", "Another task"], home.MyTasks.Select(row => row.Title));
+        Assert.True(home.MyTasks[1].IsStep);
+        Assert.Contains("1 step to do", home.MyTasks[0].Details, StringComparison.Ordinal);
+
+        home.MyTasks[0].EditCommand.Execute(null);
+        Assert.False(home.Editor!.CanBeStep);
+    }
+
+    [Fact]
+    public void A_task_waiting_on_another_asks_before_it_is_marked_done()
+    {
+        var home = SetUp(Launch());
+        AddTask(home, "Install the SDK");
+        AddTask(home, "Build the APK");
+
+        home.MyTasks.Single(row => row.Title == "Build the APK").EditCommand.Execute(null);
+        var editor = home.Editor!;
+        editor.NewLinkKind = editor.LinkKinds.Single(kind => kind.Label == "Is blocked by");
+        editor.NewLinkTarget = editor.LinkTargets.Single(target => target.Label == "Install the SDK");
+        editor.AddLinkCommand.Execute(null);
+        Assert.Equal(["Blocked by · Install the SDK"], editor.Links.Select(link => link.Text));
+        editor.CancelCommand.Execute(null);
+
+        var apk = home.MyTasks.Single(row => row.Title == "Build the APK");
+        Assert.Equal("Waiting on Install the SDK", apk.WaitingText);
+        apk.CompleteCommand.Execute(null);
+        Assert.Equal("Build the APK is waiting on Install the SDK. Mark it done anyway?", home.BlockedQuestion);
+        Assert.Equal(2, home.MyTasks.Count);
+
+        home.CompleteAnywayCommand.Execute(null);
+        Assert.Equal(["Install the SDK"], home.MyTasks.Select(row => row.Title));
+        Assert.False(home.IsAskingAboutBlocked);
+    }
+
+    [Fact]
+    public void Comments_are_added_from_the_editor()
+    {
+        var home = SetUp(Launch());
+        AddTask(home, "Dishes", editor => editor.IsShared = true);
+
+        home.MyTasks.Single().EditCommand.Execute(null);
+        home.Editor!.NewComment = "I'll do them tonight";
+        home.Editor.AddCommentCommand.Execute(null);
+
+        var comment = Assert.Single(home.Editor.Comments);
+        Assert.Equal("I'll do them tonight", comment.Text);
+        Assert.StartsWith("Robin · ", comment.Byline, StringComparison.Ordinal);
+        Assert.Null(home.Editor.NewComment);
+    }
+
+    [Fact]
+    public void Link_lines_from_an_earlier_import_can_be_turned_into_links_from_the_import_panel()
+    {
+        var home = SetUp(Launch());
+        AddTask(home, "Install the SDK");
+        AddTask(home, "Build the APK", editor => editor.Notes = "Blocked by: Install the SDK");
+
+        home.OpenImportCommand.Execute(null);
+        home.Import!.ConvertLinkLinesCommand.Execute(null);
+
+        Assert.Equal("Made 1 link.", home.Import.LinkLinesResult);
+        Assert.Equal("Waiting on Install the SDK", home.MyTasks.Single(row => row.Title == "Build the APK").WaitingText);
+    }
 }

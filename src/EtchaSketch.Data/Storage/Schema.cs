@@ -147,6 +147,36 @@ public static class Schema
         ALTER TABLE tasks ADD COLUMN remind_minutes_before INTEGER;
         ALTER TABLE tasks ADD COLUMN alarm INTEGER NOT NULL DEFAULT 0;
         """,
+
+        // 8: subtasks, links between tasks, and comments. All sync: a subtask and a comment go
+        // where their task goes, and a link goes where the more private of its two tasks goes.
+        """
+        -- No foreign key: sync can deliver a subtask before its parent. A subtask whose parent
+        -- isn't here (yet) shows as a top-level task, and deleting a task deletes its subtasks.
+        ALTER TABLE tasks ADD COLUMN parent_id TEXT;
+
+        CREATE INDEX tasks_by_parent ON tasks (parent_id);
+
+        CREATE TABLE task_links (
+            from_task TEXT NOT NULL REFERENCES tasks (id) ON DELETE CASCADE,
+            to_task TEXT NOT NULL REFERENCES tasks (id) ON DELETE CASCADE,
+            kind TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (from_task, to_task, kind)
+        );
+
+        CREATE INDEX task_links_by_target ON task_links (to_task);
+
+        CREATE TABLE task_comments (
+            id TEXT PRIMARY KEY,
+            task_id TEXT NOT NULL REFERENCES tasks (id) ON DELETE CASCADE,
+            author_id TEXT NOT NULL REFERENCES profiles (id),
+            text TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX task_comments_by_task ON task_comments (task_id, created_at);
+        """,
     ];
 
     /// <summary>The version a fully upgraded database reports.</summary>

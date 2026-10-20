@@ -10,7 +10,7 @@ namespace EtchaSketch.Data.Tasks;
 public sealed class TaskRepository(SqliteConnection connection)
 {
     private const string Columns =
-        "id, household_id, owner_id, title, notes, due, priority, assignee_id, recurrence_frequency, recurrence_interval, completed_at, tier, project, labels, remind_days_before, due_time, remind_minutes_before, alarm";
+        "id, household_id, owner_id, title, notes, due, priority, assignee_id, recurrence_frequency, recurrence_interval, completed_at, tier, project, labels, remind_days_before, due_time, remind_minutes_before, alarm, parent_id";
 
     // Open tasks first by due date (undated last), then most urgent first, then oldest first.
     private const string Order = "ORDER BY due IS NULL, due, priority DESC, rowid";
@@ -20,6 +20,7 @@ public sealed class TaskRepository(SqliteConnection connection)
     public const int MaxLabelLength = 40;
     public const int MaxRemindDays = 60;
     public const int MaxRemindMinutes = 24 * 60;
+    public const int MaxCommentLength = 4_000;
 
     private static readonly string ParameterList = string.Join(", ", Columns.Split(", ").Select(column => "$" + column));
 
@@ -41,7 +42,7 @@ public sealed class TaskRepository(SqliteConnection connection)
                 recurrence_frequency = $recurrence_frequency, recurrence_interval = $recurrence_interval,
                 completed_at = $completed_at, tier = $tier, project = $project, labels = $labels,
                 remind_days_before = $remind_days_before, due_time = $due_time,
-                remind_minutes_before = $remind_minutes_before, alarm = $alarm
+                remind_minutes_before = $remind_minutes_before, alarm = $alarm, parent_id = $parent_id
             WHERE id = $id
             """,
             Parameters(task));
@@ -54,15 +55,27 @@ public sealed class TaskRepository(SqliteConnection connection)
 
     public TaskItem? Get(Guid id) => Query($"SELECT {Columns} FROM tasks WHERE id = $id", ("$id", id.ToString())).SingleOrDefault();
 
-    public void Delete(Guid id) => Execute("DELETE FROM tasks WHERE id = $id", ("$id", id.ToString()));
+    /// <summary>Deletes a task and its subtasks. Their links and comments go with them.</summary>
+    public void Delete(Guid id)
+    {
+        using var transaction = connection.BeginTransaction();
+        Execute("DELETE FROM tasks WHERE parent_id = $id", ("$id", id.ToString()));
+        Execute("DELETE FROM tasks WHERE id = $id", ("$id", id.ToString()));
+        transaction.Commit();
+    }
 
     /// <summary>
     /// Marks a task done by someone. A one-off task closes; a recurring one moves to its next due
     /// date and stays open. Either way the completion is logged.
     /// </summary>
-    public TaskItem Complete(Guid taskId, Guid byProfileId, DateTimeOffset at)
+    /// <exception cref="TaskBlockedException">A task blocking it isn't done yet, and <paramref name="evenIfBlocked"/> wasn't set.</exception>
+    public TaskItem Complete(Guid taskId, Guid byProfileId, DateTimeOffset at, bool evenIfBlocked = false)
     {
         var task = Get(taskId) ?? throw new ArgumentException($"There is no task {taskId}.", nameof(taskId));
+        if (!evenIfBlocked && OpenBlockersOf(taskId) is { Count: > 0 } blockers)
+        {
+            throw new TaskBlockedException(blockers);
+        }
 
         var completedOn = DateOnly.FromDateTime(at.DateTime);
         var updated = task.Recurrence is { } recurrence
@@ -128,6 +141,147 @@ public sealed class TaskRepository(SqliteConnection connection)
             .ToList();
         columns.Add(new ChoreColumn(null, chores.Where(chore => chore.AssigneeId is null).ToList()));
         return columns;
+    }
+
+    public bool HasSubtasks(Guid taskId) =>
+        Query($"SELECT {Columns} FROM tasks WHERE parent_id = $id LIMIT 1", ("$id", taskId.ToString())).Count > 0;
+
+    /// <summary>
+    /// Links two tasks. Blocking can't go round in a circle (nothing could ever be finished), and the
+    /// same link isn't added twice. Returns false when it was there already.
+    /// </summary>
+    public bool AddLink(TaskLink link, DateTimeOffset at)
+    {
+        var from = Get(link.FromTaskId) ?? throw new ArgumentException("That task doesn't exist.", nameof(link));
+        var to = Get(link.ToTaskId) ?? throw new ArgumentException("That task doesn't exist.", nameof(link));
+        if (from.Id == to.Id || from.HouseholdId != to.HouseholdId)
+        {
+            throw new ArgumentException("A task can only be linked to another task in the same household.", nameof(link));
+        }
+
+        if (Links(from.Id).Any(existing => existing.Kind == link.Kind
+                && ((existing.FromTaskId == from.Id && existing.ToTaskId == to.Id)
+                    || (link.Kind == TaskLinkKind.Related && existing.FromTaskId == to.Id && existing.ToTaskId == from.Id))))
+        {
+            return false;
+        }
+
+        if (link.Kind == TaskLinkKind.Blocks && Blocks(to.Id, from.Id))
+        {
+            throw new ArgumentException($"{to.Title} already waits on {from.Title} being done, so {from.Title} can't wait on it.", nameof(link));
+        }
+
+        Execute("INSERT INTO task_links (from_task, to_task, kind, created_at) VALUES ($from, $to, $kind, $at)",
+            ("$from", from.Id.ToString()), ("$to", to.Id.ToString()), ("$kind", link.Kind.ToString()), ("$at", Text(at)));
+        return true;
+    }
+
+    public void RemoveLink(TaskLink link) => Execute(
+        "DELETE FROM task_links WHERE from_task = $from AND to_task = $to AND kind = $kind",
+        ("$from", link.FromTaskId.ToString()), ("$to", link.ToTaskId.ToString()), ("$kind", link.Kind.ToString()));
+
+    /// <summary>A task's links as one person sees them: only links to tasks they can see.</summary>
+    public IReadOnlyList<TaskLinkView> LinksOf(Guid taskId, Guid viewerId)
+    {
+        var visible = ExportableBy(viewerId).ToDictionary(task => task.Id);
+        if (!visible.ContainsKey(taskId))
+        {
+            return [];
+        }
+
+        return Links(taskId)
+            .Select(link => link.FromTaskId == taskId
+                ? (Other: link.ToTaskId, link.Kind, OtherIsFirst: false)
+                : (Other: link.FromTaskId, link.Kind, OtherIsFirst: true))
+            .Where(link => visible.ContainsKey(link.Other))
+            .Select(link => new TaskLinkView(visible[link.Other], link.Kind, link.OtherIsFirst))
+            .OrderBy(link => link.Label, StringComparer.Ordinal)
+            .ThenBy(link => link.Other.Title, StringComparer.CurrentCulture)
+            .ToList();
+    }
+
+    /// <summary>The unfinished tasks that block this one.</summary>
+    public IReadOnlyList<TaskItem> OpenBlockersOf(Guid taskId) => Query(
+        $"SELECT {Columns} FROM tasks WHERE completed_at IS NULL "
+        + "AND id IN (SELECT from_task FROM task_links WHERE to_task = $id AND kind = $blocks) " + Order,
+        ("$id", taskId.ToString()), ("$blocks", nameof(TaskLinkKind.Blocks)));
+
+    public TaskComment AddComment(Guid taskId, Guid authorId, string text, DateTimeOffset at)
+    {
+        text = (text ?? "").Trim();
+        if (text.Length is 0 or > MaxCommentLength)
+        {
+            throw new ArgumentException(text.Length == 0 ? "Write something first." : $"A comment can be at most {MaxCommentLength} characters.", nameof(text));
+        }
+
+        if (!ExportableBy(authorId).Any(task => task.Id == taskId))
+        {
+            throw new ArgumentException("You can only comment on a task you can see.", nameof(taskId));
+        }
+
+        var comment = new TaskComment(Guid.NewGuid(), taskId, authorId, text, at);
+        Execute("INSERT INTO task_comments (id, task_id, author_id, text, created_at) VALUES ($id, $task, $author, $text, $at)",
+            ("$id", comment.Id.ToString()), ("$task", taskId.ToString()), ("$author", authorId.ToString()), ("$text", text), ("$at", Text(at)));
+        return comment;
+    }
+
+    /// <summary>A task's comments, oldest first, if this person can see the task.</summary>
+    public IReadOnlyList<TaskComment> CommentsOf(Guid taskId, Guid viewerId)
+    {
+        if (!ExportableBy(viewerId).Any(task => task.Id == taskId))
+        {
+            return [];
+        }
+
+        using var command = Command("SELECT id, author_id, text, created_at FROM task_comments WHERE task_id = $task ORDER BY created_at, rowid",
+            ("$task", taskId.ToString()));
+        using var reader = command.ExecuteReader();
+        var comments = new List<TaskComment>();
+        while (reader.Read())
+        {
+            comments.Add(new TaskComment(Guid.Parse(reader.GetString(0)), taskId, Guid.Parse(reader.GetString(1)), reader.GetString(2),
+                ParseTime(reader.GetString(3))));
+        }
+
+        return comments;
+    }
+
+    private List<TaskLink> Links(Guid taskId)
+    {
+        using var command = Command("SELECT from_task, to_task, kind FROM task_links WHERE from_task = $id OR to_task = $id",
+            ("$id", taskId.ToString()));
+        using var reader = command.ExecuteReader();
+        var links = new List<TaskLink>();
+        while (reader.Read())
+        {
+            links.Add(new TaskLink(Guid.Parse(reader.GetString(0)), Guid.Parse(reader.GetString(1)), Enum.Parse<TaskLinkKind>(reader.GetString(2))));
+        }
+
+        return links;
+    }
+
+    // Whether a chain of "blocks" links leads from one task to another.
+    private bool Blocks(Guid from, Guid to)
+    {
+        var seen = new HashSet<Guid> { from };
+        var next = new Queue<Guid>([from]);
+        while (next.TryDequeue(out var current))
+        {
+            foreach (var link in Links(current).Where(link => link.Kind == TaskLinkKind.Blocks && link.FromTaskId == current))
+            {
+                if (link.ToTaskId == to)
+                {
+                    return true;
+                }
+
+                if (seen.Add(link.ToTaskId))
+                {
+                    next.Enqueue(link.ToTaskId);
+                }
+            }
+        }
+
+        return false;
     }
 
     private TaskItem Validated(TaskItem task)
@@ -202,6 +356,32 @@ public sealed class TaskRepository(SqliteConnection connection)
             throw new ArgumentException("An alarm needs a due time.", nameof(task));
         }
 
+        if (task.ParentId is { } parentId)
+        {
+            var parent = Get(parentId) ?? throw new ArgumentException("That parent task doesn't exist.", nameof(task));
+            if (parentId == task.Id || parent.HouseholdId != task.HouseholdId)
+            {
+                throw new ArgumentException("A task can only be a step of another task in the same household.", nameof(task));
+            }
+
+            if (parent.ParentId is not null || HasSubtasks(task.Id))
+            {
+                throw new ArgumentException("Subtasks go one level deep: a step can't have steps of its own.", nameof(task));
+            }
+
+            // A step is never more open than the task it belongs to.
+            if (task.Tier < parent.Tier || (parent.Tier > PrivacyTier.Household && parent.OwnerId != task.OwnerId))
+            {
+                throw new ArgumentException("A step of a private task has to be private too.", nameof(task));
+            }
+        }
+
+        if (Get(task.Id) is { } before && task.Tier > before.Tier
+            && Query($"SELECT {Columns} FROM tasks WHERE parent_id = $id", ("$id", task.Id.ToString())).Any(child => child.Tier < task.Tier))
+        {
+            throw new ArgumentException("Make its steps private first, so none is more open than the task.", nameof(task));
+        }
+
         // Times are kept to the minute, so a reminder can't be keyed to a second nobody can see.
         var dueTime = task.DueTime is { } time ? new TimeOnly(time.Hour, time.Minute) : (TimeOnly?)null;
 
@@ -242,6 +422,7 @@ public sealed class TaskRepository(SqliteConnection connection)
         ("$due_time", task.DueTime?.ToString("HH:mm", CultureInfo.InvariantCulture)),
         ("$remind_minutes_before", task.RemindMinutesBefore),
         ("$alarm", task.Alarm ? 1 : 0),
+        ("$parent_id", task.ParentId?.ToString()),
     ];
 
     private List<TaskItem> Query(string sql, params (string Name, object? Value)[] parameters)
@@ -272,6 +453,7 @@ public sealed class TaskRepository(SqliteConnection connection)
                 DueTime = reader.IsDBNull(15) ? null : TimeOnly.ParseExact(reader.GetString(15), "HH:mm", CultureInfo.InvariantCulture),
                 RemindMinutesBefore = reader.IsDBNull(16) ? null : reader.GetInt32(16),
                 Alarm = reader.GetInt32(17) != 0,
+                ParentId = reader.IsDBNull(18) ? null : Guid.Parse(reader.GetString(18)),
             });
         }
 

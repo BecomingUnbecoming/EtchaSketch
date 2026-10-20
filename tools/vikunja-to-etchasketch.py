@@ -59,13 +59,35 @@ RELATION = {
 }
 
 
+# How Vikunja's relations become EtchaSketch links, from this task's side. Vikunja lists each
+# relation on both tasks, so the mirror kinds are left to the other task.
+LINK = {
+    "blocking": "blocks",
+    "precedes": "blocks",
+    "related": "related",
+    "duplicateof": "related",
+}
+
+
 def notes_of(task, titles):
-    """The description, then one line per link to another task, since EtchaSketch has no task links yet."""
+    """The description, then a line for any relation EtchaSketch has no link for."""
     lines = [task["description"].strip()] if task.get("description") else []
     for kind, others in (task.get("related_tasks") or {}).items():
+        if kind in LINK or kind in ("blocked", "follows", "duplicates", "parenttask", "subtask"):
+            continue
         names = ", ".join(titles.get(other["id"], f"task {other['id']}") for other in others)
         lines.append(f"{RELATION.get(kind, kind.capitalize())}: {names}")
     return "\n\n".join(lines) if lines else None
+
+
+def relations_of(task):
+    """The parent task's source, and links to other tasks by source."""
+    related = task.get("related_tasks") or {}
+    parents = related.get("parenttask") or []
+    parent = f"vikunja:{parents[0]['id']}" if parents else None
+    links = [{"kind": LINK[kind], "source": f"vikunja:{other['id']}"}
+             for kind, others in related.items() if kind in LINK for other in others]
+    return parent, links
 
 
 def remind_days(task):
@@ -103,6 +125,11 @@ def convert(task, projects, titles):
     }
     if (notes := notes_of(task, titles)):
         out["notes"] = notes
+    parent, links = relations_of(task)
+    if parent:
+        out["parent"] = parent
+    if links:
+        out["links"] = links
     if (days := remind_days(task)):
         out["remindDaysBefore"] = days
     due, time = local_due(task)

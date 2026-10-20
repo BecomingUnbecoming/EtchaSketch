@@ -35,7 +35,7 @@ internal sealed record SyncTable(
             """
             SELECT id, household_id, owner_id, title, due, priority, assignee_id, recurrence_frequency,
                    recurrence_interval, completed_at, tier, created_at, project, labels, remind_days_before,
-                   due_time, remind_minutes_before, alarm
+                   due_time, remind_minutes_before, alarm, parent_id
             FROM tasks
             """,
             ["id"],
@@ -49,6 +49,17 @@ internal sealed record SyncTable(
             Delete: "UPDATE tasks SET notes = NULL WHERE id = $id"),
 
         new("task_completions", "SELECT * FROM task_completions", ["task_id", "profile_id", "completed_at"],
+            (row, taskScopes) => taskScopes.GetValueOrDefault(Convert.ToString(row["task_id"])!)),
+
+        // A link between two shared tasks is shared; one touching a private task stays with that task's owner.
+        new("task_links", "SELECT * FROM task_links", ["from_task", "to_task", "kind"],
+            (row, taskScopes) =>
+                taskScopes.GetValueOrDefault(Convert.ToString(row["from_task"])!) is { } from
+                && taskScopes.GetValueOrDefault(Convert.ToString(row["to_task"])!) is { } to
+                    ? from.StartsWith(SyncScopes.PersonPrefix, StringComparison.Ordinal) ? from : to
+                    : null),
+
+        new("task_comments", "SELECT * FROM task_comments", ["id"],
             (row, taskScopes) => taskScopes.GetValueOrDefault(Convert.ToString(row["task_id"])!)),
 
         new("quiet_hours", "SELECT * FROM quiet_hours", ["profile_id"], (row, _) => SyncScopes.Person(row["profile_id"])),

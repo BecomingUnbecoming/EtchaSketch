@@ -253,4 +253,95 @@ public sealed class TaskRepositoryTests : IDisposable
             Due = new DateOnly(2026, 10, 30), DueTime = new TimeOnly(9, 0), RemindMinutesBefore = 24 * 60 + 1,
         }));
     }
+
+    [Fact]
+    public void A_subtask_belongs_to_one_task_one_level_deep_and_no_more_open_than_it()
+    {
+        var parent = _tasks.Add(NewTask("Move house", tier: PrivacyTier.Household));
+        var step = _tasks.Add(NewTask("Book van", tier: PrivacyTier.Household) with { ParentId = parent.Id });
+        var privateStep = _tasks.Add(NewTask("Pack my desk") with { ParentId = parent.Id });
+
+        Assert.Equal(parent.Id, _tasks.Get(step.Id)!.ParentId);
+        Assert.True(_tasks.HasSubtasks(parent.Id));
+        Assert.Equal(parent.Id, privateStep.ParentId);
+
+        Assert.Throws<ArgumentException>(() => _tasks.Add(NewTask("Too deep") with { ParentId = step.Id }));
+        Assert.Throws<ArgumentException>(() => _tasks.Update(parent with { ParentId = _tasks.Add(NewTask("Other")).Id }));
+        var secret = _tasks.Add(NewTask("Surprise"));
+        Assert.Throws<ArgumentException>(() => _tasks.Add(NewTask("Shared step", tier: PrivacyTier.Household) with { ParentId = secret.Id }));
+        Assert.Throws<ArgumentException>(() => _tasks.Update(parent with { Tier = PrivacyTier.Private }));
+    }
+
+    [Fact]
+    public void Deleting_a_task_deletes_its_subtasks_links_and_comments()
+    {
+        var parent = _tasks.Add(NewTask("Move house"));
+        var step = _tasks.Add(NewTask("Book van") with { ParentId = parent.Id });
+        var other = _tasks.Add(NewTask("Other"));
+        _tasks.AddLink(new TaskLink(parent.Id, other.Id, TaskLinkKind.Blocks), Wednesday);
+        _tasks.AddComment(parent.Id, _robin.Id, "Ask Sam about the van", Wednesday);
+
+        _tasks.Delete(parent.Id);
+
+        Assert.Null(_tasks.Get(step.Id));
+        Assert.Empty(_tasks.LinksOf(other.Id, _robin.Id));
+        Assert.Empty(_tasks.OpenBlockersOf(other.Id));
+    }
+
+    [Fact]
+    public void A_blocked_task_waits_for_its_blocker_unless_you_finish_it_anyway()
+    {
+        var sdk = _tasks.Add(NewTask("Install the SDK"));
+        var apk = _tasks.Add(NewTask("Build the APK"));
+        _tasks.AddLink(new TaskLink(sdk.Id, apk.Id, TaskLinkKind.Blocks), Wednesday);
+
+        var blocked = Assert.Throws<TaskBlockedException>(() => _tasks.Complete(apk.Id, _robin.Id, Wednesday));
+        Assert.Equal("Install the SDK", Assert.Single(blocked.Blockers).Title);
+
+        _tasks.Complete(sdk.Id, _robin.Id, Wednesday);
+        _tasks.Complete(apk.Id, _robin.Id, Wednesday);
+
+        var again = _tasks.Add(NewTask("Second"));
+        var blocker = _tasks.Add(NewTask("First"));
+        _tasks.AddLink(new TaskLink(blocker.Id, again.Id, TaskLinkKind.Blocks), Wednesday);
+        Assert.NotNull(_tasks.Complete(again.Id, _robin.Id, Wednesday, evenIfBlocked: true).CompletedAt);
+    }
+
+    [Fact]
+    public void Links_read_from_both_sides_never_go_round_in_a_circle_and_are_not_doubled()
+    {
+        var a = _tasks.Add(NewTask("A"));
+        var b = _tasks.Add(NewTask("B"));
+        var c = _tasks.Add(NewTask("C"));
+        _tasks.AddLink(new TaskLink(a.Id, b.Id, TaskLinkKind.Blocks), Wednesday);
+        _tasks.AddLink(new TaskLink(b.Id, c.Id, TaskLinkKind.Blocks), Wednesday);
+        _tasks.AddLink(new TaskLink(a.Id, c.Id, TaskLinkKind.Related), Wednesday);
+        _tasks.AddLink(new TaskLink(c.Id, a.Id, TaskLinkKind.Related), Wednesday);
+        _tasks.AddLink(new TaskLink(a.Id, b.Id, TaskLinkKind.Blocks), Wednesday);
+
+        Assert.Equal([("Blocked by", "A"), ("Blocks", "C")], _tasks.LinksOf(b.Id, _robin.Id).Select(link => (link.Label, link.Other.Title)));
+        Assert.Equal([("Blocks", "B"), ("Related", "C")], _tasks.LinksOf(a.Id, _robin.Id).Select(link => (link.Label, link.Other.Title)));
+        Assert.Throws<ArgumentException>(() => _tasks.AddLink(new TaskLink(c.Id, a.Id, TaskLinkKind.Blocks), Wednesday));
+        Assert.Throws<ArgumentException>(() => _tasks.AddLink(new TaskLink(a.Id, a.Id, TaskLinkKind.Related), Wednesday));
+
+        _tasks.RemoveLink(new TaskLink(a.Id, b.Id, TaskLinkKind.Blocks));
+        Assert.Equal([("Blocks", "C")], _tasks.LinksOf(b.Id, _robin.Id).Select(link => (link.Label, link.Other.Title)));
+    }
+
+    [Fact]
+    public void Links_and_comments_show_only_to_people_who_can_see_the_tasks()
+    {
+        var mine = _tasks.Add(NewTask("Surprise for Kai"));
+        var chore = _tasks.Add(NewTask("Dishes", tier: PrivacyTier.Household));
+        _tasks.AddLink(new TaskLink(mine.Id, chore.Id, TaskLinkKind.Related), Wednesday);
+        _tasks.AddComment(mine.Id, _robin.Id, "the bakery on 5th", Wednesday);
+        _tasks.AddComment(chore.Id, _kai.Id, "I'll do them tonight", Wednesday);
+
+        Assert.Empty(_tasks.LinksOf(chore.Id, _kai.Id));
+        Assert.Single(_tasks.LinksOf(chore.Id, _robin.Id));
+        Assert.Empty(_tasks.CommentsOf(mine.Id, _kai.Id));
+        Assert.Equal("I'll do them tonight", Assert.Single(_tasks.CommentsOf(chore.Id, _robin.Id)).Text);
+        Assert.Throws<ArgumentException>(() => _tasks.AddComment(mine.Id, _kai.Id, "peek", Wednesday));
+        Assert.Throws<ArgumentException>(() => _tasks.AddComment(chore.Id, _kai.Id, "   ", Wednesday));
+    }
 }

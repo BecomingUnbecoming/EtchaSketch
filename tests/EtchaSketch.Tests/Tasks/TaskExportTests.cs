@@ -152,4 +152,24 @@ public sealed class TaskExportTests : IDisposable
         Assert.All(ics.Split("\r\n"), line => Assert.True(Encoding.UTF8.GetByteCount(line) <= 75, line));
         Assert.Contains("seventy-five byte limit of a calendar line ✨✨", ics.Replace("\r\n ", "", StringComparison.Ordinal), StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void Subtasks_and_links_survive_an_export_and_import()
+    {
+        var move = Add("Move house");
+        var van = _tasks.Add(new TaskItem { HouseholdId = _home.Id, OwnerId = _robin.Id, Title = "Book van", ParentId = move.Id });
+        var pack = Add("Pack");
+        _tasks.AddLink(new TaskLink(van.Id, pack.Id, TaskLinkKind.Blocks), Now);
+        _tasks.AddLink(new TaskLink(pack.Id, move.Id, TaskLinkKind.Related), Now);
+
+        var json = TaskExport.ToJson(_tasks, _robin, Now);
+        var (fresh, freshHome) = NewDevice("new-laptop", "Robin");
+        var me = freshHome.Members[0];
+        var result = TaskImport.Apply(fresh, freshHome.Id, me.Id, TaskImport.Parse(json));
+
+        Assert.Empty(result.Problems);
+        Assert.Equal(move.Id, fresh.Get(van.Id)!.ParentId);
+        Assert.Equal([("Blocked by", "Book van"), ("Related", "Move house")],
+            fresh.LinksOf(pack.Id, me.Id).Select(link => (link.Label, link.Other.Title)));
+    }
 }

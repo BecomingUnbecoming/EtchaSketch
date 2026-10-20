@@ -92,6 +92,37 @@ public partial class ImportViewModel(AppSession session, Household household, Pr
         imported?.Invoke();
     }
 
+    /// <summary>What turning link lines into links did, or null before it has run.</summary>
+    [ObservableProperty]
+    public partial string? LinkLinesResult { get; private set; }
+
+    /// <summary>
+    /// Turns lines like "Blocked by: Install the SDK", written into notes by an earlier import, into
+    /// real links and subtasks.
+    /// </summary>
+    [RelayCommand]
+    private void ConvertLinkLines()
+    {
+        var result = TaskImport.ConvertLinkLines(session.Tasks, me.Id, session.Now);
+        var made = new List<string>();
+        if (result.Links > 0)
+        {
+            made.Add(result.Links == 1 ? "1 link" : $"{result.Links} links");
+        }
+
+        if (result.Subtasks > 0)
+        {
+            made.Add(result.Subtasks == 1 ? "1 step" : $"{result.Subtasks} steps");
+        }
+
+        LinkLinesResult = (made.Count == 0 ? "Nothing new to turn into links." : $"Made {string.Join(" and ", made)}.")
+            + (result.LinesKept > 0
+                ? $" {result.LinesKept} {(result.LinesKept == 1 ? "line names a task" : "lines name tasks")} that can't be found (finished, or two with the same title), so {(result.LinesKept == 1 ? "it stays" : "they stay")} in the notes."
+                : "");
+        _imported = true;
+        imported?.Invoke();
+    }
+
     [RelayCommand]
     private void Close() => close(_imported);
 

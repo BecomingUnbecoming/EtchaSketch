@@ -196,4 +196,57 @@ public sealed class TaskImportTests : IDisposable
         Assert.Equal(1, result.Added);
         Assert.Contains("isn't a time like 14:05", Assert.Single(result.Problems));
     }
+
+    private TaskItem WithNotes(string title, string? notes) =>
+        _tasks.Add(new TaskItem { HouseholdId = _home.Id, OwnerId = _robin.Id, Title = title, Notes = notes });
+
+    [Fact]
+    public void Link_lines_from_an_earlier_import_become_real_links_and_subtasks()
+    {
+        var sdk = WithNotes("Install the SDK", "Set up Rider first\n\nBlocking: Build the APK\n\nSubtask of: Phone build\n\nImported from vikunja:1");
+        var apk = WithNotes("Build the APK", "Blocked by: Install the SDK\n\nImported from vikunja:2");
+        var phone = WithNotes("Phone build", "Parent task: Install the SDK\n\nImported from vikunja:3");
+        var lonely = WithNotes("Lonely", "Related: A task that was finished\n\nImported from vikunja:4");
+
+        var result = TaskImport.ConvertLinkLines(_tasks, _robin.Id, DateTimeOffset.UtcNow);
+
+        Assert.Equal(new TaskImport.LinkConversion(1, 1, 1), result);
+        Assert.Equal([("Blocked by", "Install the SDK")], _tasks.LinksOf(apk.Id, _robin.Id).Select(link => (link.Label, link.Other.Title)));
+        Assert.Equal(sdk.Id, _tasks.Get(phone.Id)!.ParentId);
+        Assert.Equal("Set up Rider first\n\nImported from vikunja:1", _tasks.Get(sdk.Id)!.Notes);
+        Assert.Equal("Imported from vikunja:2", _tasks.Get(apk.Id)!.Notes);
+        Assert.Equal("Imported from vikunja:3", _tasks.Get(phone.Id)!.Notes);
+        Assert.Equal("Related: A task that was finished\n\nImported from vikunja:4", _tasks.Get(lonely.Id)!.Notes);
+
+        Assert.Equal(new TaskImport.LinkConversion(0, 0, 1), TaskImport.ConvertLinkLines(_tasks, _robin.Id, DateTimeOffset.UtcNow));
+        Assert.Single(_tasks.LinksOf(apk.Id, _robin.Id));
+    }
+
+    [Fact]
+    public void A_title_with_a_comma_in_it_is_still_found()
+    {
+        WithNotes("Buy milk, eggs", null);
+        WithNotes("Bake", null);
+        var cake = WithNotes("Cake", "Related: Buy milk, eggs, Bake");
+
+        TaskImport.ConvertLinkLines(_tasks, _robin.Id, DateTimeOffset.UtcNow);
+
+        Assert.Equal(["Bake", "Buy milk, eggs"], _tasks.LinksOf(cake.Id, _robin.Id).Select(link => link.Other.Title));
+        Assert.Null(_tasks.Get(cake.Id)!.Notes);
+    }
+
+    [Fact]
+    public void A_file_can_give_tasks_a_parent_and_links_by_their_source()
+    {
+        var result = Import(File(
+            """{ "title": "Move house", "source": "x:1" }""",
+            """{ "title": "Book van", "source": "x:2", "parent": "x:1", "links": [ { "kind": "blocks", "source": "x:3" } ] }""",
+            """{ "title": "Pack", "source": "x:3", "links": [ { "kind": "related", "source": "x:9" } ] }"""));
+
+        Assert.Equal(3, result.Added);
+        Assert.Contains("x:9", Assert.Single(result.Problems), StringComparison.Ordinal);
+        var tasks = _tasks.VisibleTo(_robin.Id).ToDictionary(task => task.Title);
+        Assert.Equal(tasks["Move house"].Id, tasks["Book van"].ParentId);
+        Assert.Equal([("Blocked by", "Book van")], _tasks.LinksOf(tasks["Pack"].Id, _robin.Id).Select(link => (link.Label, link.Other.Title)));
+    }
 }

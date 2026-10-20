@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -97,6 +98,37 @@ public partial class HomeViewModel : ViewModelBase
 
     public bool IsShowingExport => Export is not null;
 
+    private Guid? _blockedTaskId;
+
+    // How many open steps each task has, counted once per refresh.
+    private Dictionary<Guid, int> _openSteps = [];
+
+    /// <summary>"Build the APK is waiting on Install the SDK. Mark it done anyway?", or null.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAskingAboutBlocked))]
+    public partial string? BlockedQuestion { get; private set; }
+
+    public bool IsAskingAboutBlocked => BlockedQuestion is not null;
+
+    [RelayCommand]
+    private void CompleteAnyway()
+    {
+        if (_blockedTaskId is { } taskId)
+        {
+            _session.Tasks.Complete(taskId, _me.Id, _session.Now, evenIfBlocked: true);
+        }
+
+        DismissBlocked();
+        Refresh();
+    }
+
+    [RelayCommand]
+    private void DismissBlocked()
+    {
+        _blockedTaskId = null;
+        BlockedQuestion = null;
+    }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(NotificationsLabel))]
     public partial int UnreadCount { get; private set; }
@@ -158,8 +190,15 @@ public partial class HomeViewModel : ViewModelBase
         {
             if (_session.Tasks.VisibleTo(_me.Id).Any(task => task.Id == taskId))
             {
-                _session.Tasks.Complete(taskId, _me.Id, _session.Now);
-                done = true;
+                try
+                {
+                    _session.Tasks.Complete(taskId, _me.Id, _session.Now);
+                    done = true;
+                }
+                catch (Core.Tasks.TaskBlockedException)
+                {
+                    // Still waiting on another task; it stays on the list, where "done anyway" is offered.
+                }
             }
         }
 
@@ -240,7 +279,9 @@ public partial class HomeViewModel : ViewModelBase
 
         MyTasks.Clear();
         var filter = FilterText.Trim();
-        foreach (var row in _session.Tasks.VisibleTo(_me.Id).Select(Row).OfType<TaskRowViewModel>().Where(row => Matches(row, filter)))
+        var visible = _session.Tasks.VisibleTo(_me.Id);
+        _openSteps = visible.Where(task => task.ParentId is not null).GroupBy(task => task.ParentId!.Value).ToDictionary(group => group.Key, group => group.Count());
+        foreach (var row in InStepOrder(visible).Select(Row).OfType<TaskRowViewModel>().Where(row => Matches(row, filter)))
         {
             MyTasks.Add(row);
         }
@@ -250,6 +291,21 @@ public partial class HomeViewModel : ViewModelBase
         {
             var name = column.AssigneeId is { } id ? NameOf(id) : "Anyone";
             ChoreColumns.Add(new ChoreColumnViewModel(name, column.Chores.Select(Row).OfType<TaskRowViewModel>().ToList()));
+        }
+    }
+
+    // Each task followed by its steps. A step whose task isn't shown here stands on its own.
+    private static IEnumerable<TaskItem> InStepOrder(IReadOnlyList<TaskItem> tasks)
+    {
+        var shown = tasks.Select(task => task.Id).ToHashSet();
+        var steps = tasks.Where(task => task.ParentId is { } parent && shown.Contains(parent)).ToLookup(task => task.ParentId!.Value);
+        foreach (var task in tasks.Where(task => task.ParentId is not { } parent || !shown.Contains(parent)))
+        {
+            yield return task;
+            foreach (var step in steps[task.Id])
+            {
+                yield return step;
+            }
         }
     }
 
@@ -279,15 +335,25 @@ public partial class HomeViewModel : ViewModelBase
             canDelete: task.OwnerId == _me.Id,
             complete: () =>
             {
-                _session.Tasks.Complete(task.Id, _me.Id, _session.Now);
-                Refresh();
+                try
+                {
+                    _session.Tasks.Complete(task.Id, _me.Id, _session.Now);
+                    Refresh();
+                }
+                catch (Core.Tasks.TaskBlockedException blocked)
+                {
+                    _blockedTaskId = task.Id;
+                    BlockedQuestion = $"{task.Title} is waiting on {string.Join(", ", blocked.Blockers.Select(b => b.Title))}. Mark it done anyway?";
+                }
             },
             edit: () => Editor = new TaskEditorViewModel(_session, _household, _me, task, CloseEditor),
             delete: () =>
             {
                 _session.Tasks.Delete(task.Id);
                 Refresh();
-            });
+            },
+            waitingOn: _session.Tasks.OpenBlockersOf(task.Id).Select(blocker => blocker.Title).ToList(),
+            openSteps: _openSteps.GetValueOrDefault(task.Id));
     }
 
     private string NameOf(Guid profileId) =>

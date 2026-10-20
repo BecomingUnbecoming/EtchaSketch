@@ -55,6 +55,49 @@
                 <TextBlock Text="Who's doing it" />
                 <ComboBox ItemsSource="{Binding AssigneeOptions}" SelectedItem="{Binding Assignee}" HorizontalAlignment="Stretch" />
 
+                <StackPanel Spacing="6" IsVisible="{Binding CanBeStep}">
+                    <TextBlock Text="Step of" />
+                    <ComboBox ItemsSource="{Binding ParentOptions}" SelectedItem="{Binding Parent}" HorizontalAlignment="Stretch"
+                              ToolTip.Tip="Make this a step of a bigger task. It shows indented under it." />
+                </StackPanel>
+
+                <StackPanel Spacing="6" IsVisible="{Binding IsExisting}">
+                    <Separator />
+                    <TextBlock Text="Links" FontWeight="SemiBold" />
+                    <ItemsControl ItemsSource="{Binding Links}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:LinkRowViewModel">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" Margin="0,0,0,4">
+                                    <TextBlock Text="{Binding Text}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                                    <Button Grid.Column="1" Content="Remove" FontSize="12" Command="{Binding RemoveCommand}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <WrapPanel>
+                        <ComboBox ItemsSource="{Binding LinkKinds}" SelectedItem="{Binding NewLinkKind}" Margin="0,0,8,8" />
+                        <ComboBox ItemsSource="{Binding LinkTargets}" SelectedItem="{Binding NewLinkTarget}" PlaceholderText="Choose a task"
+                                  MinWidth="180" Margin="0,0,8,8" />
+                        <Button Content="Add link" Command="{Binding AddLinkCommand}" Margin="0,0,0,8" />
+                    </WrapPanel>
+
+                    <Separator />
+                    <TextBlock Text="Comments" FontWeight="SemiBold" />
+                    <TextBlock Text="Everyone who can see this task can read its comments." FontSize="12" Opacity="0.7" TextWrapping="Wrap" />
+                    <ItemsControl ItemsSource="{Binding Comments}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:CommentRowViewModel">
+                                <StackPanel Spacing="2" Margin="0,0,0,8">
+                                    <TextBlock Text="{Binding Byline}" FontSize="12" Opacity="0.7" />
+                                    <TextBlock Text="{Binding Text}" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBox Text="{Binding NewComment}" PlaceholderText="Add a comment" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="40" />
+                    <Button Content="Add comment" Command="{Binding AddCommentCommand}" HorizontalAlignment="Right" />
+                </StackPanel>
+
                 <TextBlock Text="{Binding ErrorMessage}" Foreground="#C42B1C" TextWrapping="Wrap"
                            IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 

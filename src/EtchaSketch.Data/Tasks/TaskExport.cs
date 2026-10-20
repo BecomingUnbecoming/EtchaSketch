@@ -30,7 +30,7 @@ public static class TaskExport
     public static string ToJson(TaskRepository tasks, Profile person, DateTimeOffset now) =>
         JsonSerializer.Serialize(
             new Document(TaskImport.Format, 1, now.ToString("O", CultureInfo.InvariantCulture), person.DisplayName,
-                tasks.ExportableBy(person.Id).Select(ToImported).ToList()),
+                tasks.ExportableBy(person.Id).Select(task => ToImported(task, tasks, person.Id)).ToList()),
             Json);
 
     /// <summary>Every task this person may see, as a spreadsheet (comma-separated, one row per task).</summary>
@@ -116,8 +116,15 @@ public static class TaskExport
         return ics.ToString();
     }
 
-    private static ImportedTask ToImported(TaskItem task) => new()
+    // A link is written once, on the task it starts from; the import makes it from both sides.
+    private static ImportedTask ToImported(TaskItem task, TaskRepository tasks, Guid personId) => new()
     {
+        Parent = task.ParentId is { } parent ? SourcePrefix + parent : null,
+        Links = tasks.LinksOf(task.Id, personId) is var links && links.Any(link => !link.OtherIsFirst)
+            ? links.Where(link => !link.OtherIsFirst)
+                .Select(link => new ImportedLink(link.Kind == TaskLinkKind.Blocks ? "blocks" : "related", SourcePrefix + link.Other.Id))
+                .ToList()
+            : null,
         Title = task.Title,
         Notes = task.Notes,
         Due = task.Due?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
