@@ -50,6 +50,9 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
+                    <Button Content="Make an assistant code" Command="{Binding InviteAssistantCommand}"
+                            ToolTip.Tip="For the household assistant on a home server: shared tasks only" />
+
                     <Border IsVisible="{Binding HasPairingCode}" Padding="12" CornerRadius="8"
                             Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
                         <StackPanel Spacing="6">

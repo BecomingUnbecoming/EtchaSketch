@@ -102,6 +102,27 @@ public sealed class SyncEngine(SqliteConnection connection, ISyncServer server, 
     }
 
     /// <summary>
+    /// Like <see cref="InviteAsync"/>, for the household assistant: the code carries the household's
+    /// key only, so the assistant can see shared tasks and never anyone's private ones.
+    /// </summary>
+    public async Task<string> InviteAssistantAsync(Guid householdId, CancellationToken cancellationToken = default)
+    {
+        var scope = SyncScopes.Household(householdId);
+        var keys = new Dictionary<string, byte[]>
+        {
+            [scope] = KeyFor(scope) ?? throw new InvalidOperationException("Turn on sync for this household first."),
+        };
+
+        await SyncAsync(cancellationToken);
+
+        var code = PairingCode.New();
+        var passes = await EnrolmentsAsync(keys.Keys, cancellationToken);
+        var bundle = JsonSerializer.SerializeToUtf8Bytes(new PairingBundle(Guid.Empty, keys, JoinToken, passes));
+        await Remote().PutPairingAsync(code.PairingId, code.Seal(bundle), cancellationToken);
+        return code.Text;
+    }
+
+    /// <summary>
     /// Joins a household with a code from one of its devices: takes the keys, fetches everything
     /// they open, and makes this device the invited person's. Returns that person's profile id.
     /// </summary>
@@ -383,7 +404,9 @@ public sealed class SyncEngine(SqliteConnection connection, ISyncServer server, 
     private void NoteThisDevice()
     {
         var households = new HouseholdRepository(connection);
-        if (households.CurrentProfileId() is not { } profileId || households.HouseholdOf(profileId) is not { } household)
+        var profileId = households.CurrentProfileId();
+        var household = profileId is { } id ? households.HouseholdOf(id) : households.All() is [var only] ? only : null;
+        if (household is null)
         {
             return;
         }
@@ -394,7 +417,7 @@ public sealed class SyncEngine(SqliteConnection connection, ISyncServer server, 
             ON CONFLICT (id) DO UPDATE SET profile_id = excluded.profile_id, name = excluded.name
             WHERE devices.profile_id IS NOT excluded.profile_id OR devices.name IS NOT excluded.name
             """,
-            ("$id", DeviceId()), ("$household", household.Id.ToString()), ("$profile", profileId.ToString()),
+            ("$id", DeviceId()), ("$household", household.Id.ToString()), ("$profile", (object?)profileId?.ToString() ?? DBNull.Value),
             ("$name", string.IsNullOrWhiteSpace(DeviceName) ? "A device" : DeviceName.Trim()), ("$now", Text(_clock.GetUtcNow())));
     }
 
@@ -429,7 +452,11 @@ public sealed class SyncEngine(SqliteConnection connection, ISyncServer server, 
 
         SetJoinToken(joinToken);
         await SyncAsync(cancellationToken);
-        households.SetCurrentProfile(profileId);
+        // The assistant's code is for nobody in particular: it acts for the household.
+        if (profileId != Guid.Empty)
+        {
+            households.SetCurrentProfile(profileId);
+        }
 
         // Again, now it knows whose it is, so it shows in the household's device list.
         await SyncAsync(cancellationToken);

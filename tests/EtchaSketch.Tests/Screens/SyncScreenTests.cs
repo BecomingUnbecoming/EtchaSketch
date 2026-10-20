@@ -369,4 +369,17 @@ public sealed class SyncScreenTests : IAsyncLifetime
         await kai.Sync!.SyncNowCommand.ExecuteAsync(null);
         Assert.Contains("didn't accept this device", kai.Sync.ErrorMessage ?? "", StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task An_assistant_code_is_made_from_the_sync_screen()
+    {
+        var desktop = SetUp(Launch("desktop"));
+        var sync = await TurnOnSync(desktop);
+
+        await sync.InviteAssistantCommand.ExecuteAsync(null);
+
+        Assert.Null(sync.ErrorMessage);
+        Assert.NotNull(sync.PairingCode);
+        Assert.Contains("shared tasks only", sync.PairingHint ?? "", StringComparison.Ordinal);
+    }
 }

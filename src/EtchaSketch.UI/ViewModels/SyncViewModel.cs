@@ -117,6 +117,14 @@ public partial class SyncViewModel : ViewModelBase
     [RelayCommand]
     private void Close() => _close();
 
+    [RelayCommand]
+    private Task InviteAssistant() => Run(async () =>
+    {
+        PairingCode = await _session.Sync!.InviteAssistantAsync(_householdId);
+        PairingHint = "For the household assistant (see docs/assistant.md): run its join command with this code within 15 minutes. "
+            + "It gets the household's shared tasks only, never anyone's private ones.";
+    }, () => _session.SyncServerAddress);
+
     private Task Invite(Profile person) => Run(async () =>
     {
         PairingCode = await _session.Sync!.InviteAsync(person.Id);

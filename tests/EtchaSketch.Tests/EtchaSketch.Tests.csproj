@@ -20,6 +20,7 @@
     <ProjectReference Include="..\..\src\EtchaSketch.Data\EtchaSketch.Data.csproj" />
     <ProjectReference Include="..\..\src\EtchaSketch.UI\EtchaSketch.UI.csproj" />
     <ProjectReference Include="..\..\src\EtchaSketch.Server\EtchaSketch.Server.csproj" />
+    <ProjectReference Include="..\..\src\EtchaSketch.Assistant\EtchaSketch.Assistant.csproj" />
   </ItemGroup>
 
   <ItemGroup>
