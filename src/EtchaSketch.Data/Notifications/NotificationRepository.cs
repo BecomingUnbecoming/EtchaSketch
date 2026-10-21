@@ -17,10 +17,11 @@ public sealed class NotificationRepository(SqliteConnection connection)
     /// reminder can be raised on every check without repeating itself. Returns null for a repeat.
     /// </summary>
     /// <remarks>
-    /// The person's quiet hours decide when it shows, and it is stored no more open than Household:
-    /// notification text never moves toward Public by itself.
+    /// The person's quiet hours decide when it shows, unless <paramref name="ignoreQuietHours"/> (an
+    /// alarm). It is stored no more open than Household: notification text never moves toward Public
+    /// by itself.
     /// </remarks>
-    public Notification? Add(Notification notification, string key)
+    public Notification? Add(Notification notification, string key, bool ignoreQuietHours = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         if (Scalar("SELECT 1 FROM profiles WHERE id = $id", ("$id", notification.OwnerId.ToString())) is null)
@@ -33,7 +34,9 @@ public sealed class NotificationRepository(SqliteConnection connection)
             // The same reminder raised on two devices gets the same id, so sync merges them into one.
             Id = IdFor(notification.OwnerId, key),
             Tier = notification.Tier < PrivacyTier.Household ? PrivacyTier.Household : notification.Tier,
-            DeliverAt = QuietHoursFor(notification.OwnerId)?.DeliveryTime(notification.CreatedAt) ?? notification.CreatedAt,
+            DeliverAt = ignoreQuietHours
+                ? notification.CreatedAt
+                : QuietHoursFor(notification.OwnerId)?.DeliveryTime(notification.CreatedAt) ?? notification.CreatedAt,
         };
 
         var added = Execute(
@@ -68,6 +71,27 @@ public sealed class NotificationRepository(SqliteConnection connection)
     public int UnreadCount(Guid recipientId, DateTimeOffset now) => Convert.ToInt32(Scalar(
         "SELECT count(*) FROM notifications WHERE recipient_id = $recipient AND deliver_at <= $now AND read_at IS NULL",
         ("$recipient", recipientId.ToString()), ("$now", Text(now))));
+
+    /// <summary>
+    /// Brings a notification back later: a copy shows at <paramref name="until"/> (after quiet hours, if
+    /// that falls inside them) and the original is marked read. Returns the copy.
+    /// </summary>
+    public Notification Snooze(Guid notificationId, DateTimeOffset until, DateTimeOffset now)
+    {
+        var original = Query($"SELECT {Columns} FROM notifications WHERE id = $id", ("$id", notificationId.ToString())).SingleOrDefault()
+            ?? throw new ArgumentException($"There is no notification {notificationId}.", nameof(notificationId));
+        if (until <= now)
+        {
+            throw new ArgumentException("Snooze until a time that hasn't happened yet.", nameof(until));
+        }
+
+        Execute("UPDATE notifications SET read_at = coalesce(read_at, $now) WHERE id = $id",
+            ("$id", notificationId.ToString()), ("$now", Text(now)));
+
+        var key = $"snooze:{notificationId}:{Text(until)}";
+        return Add(original with { CreatedAt = until, ReadAt = null }, key)
+            ?? Query($"SELECT {Columns} FROM notifications WHERE id = $id", ("$id", IdFor(original.OwnerId, key).ToString())).Single();
+    }
 
     /// <summary>Marks everything delivered so far as read. Held notifications stay unread for when they show.</summary>
     public void MarkAllRead(Guid recipientId, DateTimeOffset now) => Execute(

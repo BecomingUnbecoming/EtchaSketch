@@ -380,4 +380,53 @@ public sealed class ScreenTests : IDisposable
         kai.OpenNotificationsCommand.Execute(null);
         Assert.Equal("Robin assigned Dishes to you", Assert.Single(kai.Notifications!.Items).Title);
     }
+
+    [Fact]
+    public void A_task_keeps_its_time_reminder_and_alarm_and_loses_them_with_its_date()
+    {
+        var home = SetUp(Launch());
+        AddTask(home, "Vet", editor =>
+        {
+            editor.DueDate = new DateTime(2026, 10, 22);
+            editor.DueTime = new TimeSpan(14, 5, 0);
+            editor.RemindBefore = editor.MinutesOptions.Single(option => option.Minutes == 30);
+            editor.IsAlarm = true;
+        });
+
+        home.MyTasks.Single().EditCommand.Execute(null);
+        var editor = home.Editor!;
+        Assert.Equal(new TimeSpan(14, 5, 0), editor.DueTime);
+        Assert.Equal(30, editor.RemindBefore.Minutes);
+        Assert.True(editor.IsAlarm);
+
+        editor.DueDate = null;
+        editor.SaveCommand.Execute(null);
+        Assert.Null(editor.ErrorMessage);
+
+        home.MyTasks.Single().EditCommand.Execute(null);
+        Assert.Null(home.Editor!.DueTime);
+        Assert.False(home.Editor.IsAlarm);
+    }
+
+    [Fact]
+    public void A_reminder_can_be_snoozed_from_the_feed()
+    {
+        var home = SetUp(Launch());
+        AddTask(home, "Take medicine", editor =>
+        {
+            editor.DueDate = new DateTime(2026, 10, 21);
+            editor.DueTime = new TimeSpan(8, 30, 0);
+        });
+        home.CheckRemindersCommand.Execute(null);
+
+        home.OpenNotificationsCommand.Execute(null);
+        var feed = home.Notifications!;
+        var row = Assert.Single(feed.Items);
+        Assert.Equal("Take medicine is due now", row.Title);
+
+        row.SnoozeTenMinutesCommand.Execute(null);
+
+        Assert.Empty(feed.Items);
+        Assert.Equal("Snoozed until 09:10: Take medicine is due now", feed.SnoozedText);
+    }
 }

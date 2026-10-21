@@ -177,4 +177,23 @@ public sealed class TaskImportTests : IDisposable
 
         Assert.Single(tasks);
     }
+
+    [Fact]
+    public void A_due_time_and_a_reminder_minutes_before_come_across()
+    {
+        Import(File("""{ "title": "Vet", "due": "2026-10-30", "dueTime": "14:05", "remindMinutesBefore": 15 }"""));
+
+        var task = Assert.Single(_tasks.VisibleTo(_robin.Id));
+        Assert.Equal(new TimeOnly(14, 5), task.DueTime);
+        Assert.Equal(15, task.RemindMinutesBefore);
+    }
+
+    [Fact]
+    public void A_time_it_cant_read_is_reported_and_the_rest_still_go_in()
+    {
+        var result = Import(File("""{ "title": "Bad", "due": "2026-10-30", "dueTime": "2pm" }""", """{ "title": "Fine" }"""));
+
+        Assert.Equal(1, result.Added);
+        Assert.Contains("isn't a time like 14:05", Assert.Single(result.Problems));
+    }
 }

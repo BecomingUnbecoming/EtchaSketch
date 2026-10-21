@@ -417,4 +417,22 @@ public sealed class SyncEngineTests : IAsyncLifetime
 
         public override DateTimeOffset GetUtcNow() => _now;
     }
+
+    [Fact]
+    public async Task The_due_time_its_reminder_and_the_alarm_travel_with_the_task()
+    {
+        _desktop.Tasks.Add(new TaskItem
+        {
+            HouseholdId = _home.Id, OwnerId = _robin.Id, Title = "Vet", Due = Today.AddDays(1), DueTime = new TimeOnly(14, 5),
+            RemindMinutesBefore = 30, Alarm = true,
+        });
+        await _desktop.Sync.SyncAsync();
+
+        var phone = await JoinAs(_robin, "robin-phone");
+
+        var task = phone.Tasks.VisibleTo(_robin.Id).Single();
+        Assert.Equal(new TimeOnly(14, 5), task.DueTime);
+        Assert.Equal(30, task.RemindMinutesBefore);
+        Assert.True(task.Alarm);
+    }
 }

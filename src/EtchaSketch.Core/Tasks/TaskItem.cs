@@ -27,6 +27,13 @@ public sealed record TaskItem : ITiered, IOwned
     [Tier(PrivacyTier.Household)]
     public DateOnly? Due { get; init; }
 
+    /// <summary>
+    /// A time of day on the due date, in local wall-clock time. With one, the day's reminder comes at
+    /// that time instead of first thing. Needs a due date.
+    /// </summary>
+    [Tier(PrivacyTier.Household)]
+    public TimeOnly? DueTime { get; init; }
+
     [Tier(PrivacyTier.Household)]
     public TaskPriority Priority { get; init; } = TaskPriority.Normal;
 
@@ -41,6 +48,20 @@ public sealed record TaskItem : ITiered, IOwned
     /// <summary>Remind this many days before the due date, as well as on it. Null for no early reminder.</summary>
     [Tier(PrivacyTier.Household)]
     public int? RemindDaysBefore { get; init; }
+
+    /// <summary>Also remind this many minutes before the due time. Needs a due time.</summary>
+    [Tier(PrivacyTier.Household)]
+    public int? RemindMinutesBefore { get; init; }
+
+    /// <summary>
+    /// Remind like an alarm: on a phone it's louder and keeps going until dismissed. Needs a due time.
+    /// </summary>
+    [Tier(PrivacyTier.Household)]
+    public bool Alarm { get; init; }
+
+    /// <summary>The moment it's due, as local wall-clock time, or null without both a date and a time.</summary>
+    [Tier(PrivacyTier.Household)]
+    public DateTime? DueAt => Due is { } due && DueTime is { } time ? due.ToDateTime(time) : null;
 
     [Tier(PrivacyTier.Household)]
     public Guid? AssigneeId { get; init; }

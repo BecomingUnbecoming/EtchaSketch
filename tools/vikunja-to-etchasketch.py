@@ -9,6 +9,7 @@ Nothing is changed in Vikunja. The file holds your tasks in plain text, so keep 
 and delete it once it has been imported. See docs/import.md for what carries over.
 """
 import json
+from datetime import datetime
 import os
 import sys
 import urllib.request
@@ -74,6 +75,23 @@ def remind_days(task):
     return max(days) if days else None
 
 
+def remind_minutes(task):
+    """Reminders less than a day before the due date, as whole minutes before it (the earliest one)."""
+    minutes = [-r["relative_period"] // 60 for r in task.get("reminders") or []
+               if r.get("relative_to") == "due_date" and -86400 < r.get("relative_period", 0) <= -60]
+    return max(minutes) if minutes else None
+
+
+def local_due(task):
+    """The due date and time in this computer's time zone. Vikunja stores UTC, so the date alone can be a day off."""
+    if not task.get("due_date") or task["due_date"] == EPOCH:
+        return None, None
+    at = datetime.fromisoformat(task["due_date"].replace("Z", "+00:00")).astimezone()
+    # Vikunja has no "no time" option; midnight is what a date without a time ends up as.
+    time = None if (at.hour, at.minute) == (0, 0) else at.strftime("%H:%M")
+    return at.strftime("%Y-%m-%d"), time
+
+
 def convert(task, projects, titles):
     out = {
         "title": task["title"],
@@ -87,8 +105,13 @@ def convert(task, projects, titles):
         out["notes"] = notes
     if (days := remind_days(task)):
         out["remindDaysBefore"] = days
-    if task.get("due_date") and task["due_date"] != EPOCH:
-        out["due"] = task["due_date"][:10]
+    due, time = local_due(task)
+    if due:
+        out["due"] = due
+    if time:
+        out["dueTime"] = time
+        if (minutes := remind_minutes(task)):
+            out["remindMinutesBefore"] = minutes
     if (repeat := repeat_of(task)):
         out["repeat"] = repeat
     return out

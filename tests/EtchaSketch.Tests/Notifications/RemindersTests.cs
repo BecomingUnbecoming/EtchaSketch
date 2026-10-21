@@ -188,4 +188,112 @@ public sealed class RemindersTests : IDisposable
 
         Assert.Equal(0, _reminders.Check(_home, Wednesday));
     }
+
+    private TaskItem AddTimed(string title, DateOnly due, TimeOnly time, int? minutesBefore = null, int? daysBefore = null, bool alarm = false) =>
+        _tasks.Add(new TaskItem
+        {
+            HouseholdId = _home.Id,
+            OwnerId = _robin.Id,
+            Title = title,
+            Due = due,
+            DueTime = time,
+            RemindMinutesBefore = minutesBefore,
+            RemindDaysBefore = daysBefore,
+            Alarm = alarm,
+        });
+
+    private static DateTimeOffset At(DateOnly day, int hour, int minute, TimeSpan? offset = null) =>
+        new(day.ToDateTime(new TimeOnly(hour, minute)), offset ?? TimeSpan.Zero);
+
+    [Fact]
+    public void A_task_with_a_time_waits_for_that_time_then_reminds_once()
+    {
+        AddTimed("Call the vet", Today, new TimeOnly(14, 5));
+
+        Assert.Equal(0, _reminders.Check(_home, At(Today, 9, 0)));
+        Assert.Equal(0, _reminders.Check(_home, At(Today, 14, 4)));
+        Assert.Equal(1, _reminders.Check(_home, At(Today, 14, 5)));
+        Assert.Equal(0, _reminders.Check(_home, At(Today, 14, 30)));
+
+        var reminder = Assert.Single(FeedOf(_robin, At(Today, 14, 30)));
+        Assert.Equal("Call the vet is due now", reminder.Title);
+        Assert.Equal("Due at 14:05", reminder.Body);
+        Assert.Equal(NotificationKind.DueNow, reminder.Kind);
+    }
+
+    [Fact]
+    public void A_reminder_minutes_before_comes_ahead_of_the_due_time()
+    {
+        AddTimed("Leave for the dentist", Today, new TimeOnly(15, 0), minutesBefore: 30);
+
+        Assert.Equal(0, _reminders.Check(_home, At(Today, 14, 29)));
+        Assert.Equal(1, _reminders.Check(_home, At(Today, 14, 30)));
+        Assert.Equal(1, _reminders.Check(_home, At(Today, 15, 0)));
+
+        var feed = FeedOf(_robin, At(Today, 15, 0));
+        Assert.Contains(feed, n => n is { Kind: NotificationKind.DueShortly, Title: "Leave for the dentist is due at 15:00", Body: "In 30 minutes" });
+        Assert.Contains(feed, n => n.Kind == NotificationKind.DueNow);
+    }
+
+    [Fact]
+    public void Opening_the_app_late_still_gives_the_due_reminder_but_not_the_one_before()
+    {
+        AddTimed("Take medicine", Today, new TimeOnly(8, 0), minutesBefore: 15);
+
+        Assert.Equal(1, _reminders.Check(_home, At(Today, 11, 0)));
+        Assert.Equal(NotificationKind.DueNow, Assert.Single(FeedOf(_robin, At(Today, 11, 0))).Kind);
+    }
+
+    [Fact]
+    public void An_early_reminder_on_a_timed_task_comes_at_that_time_of_day()
+    {
+        AddTimed("Pay rent", Today.AddDays(2), new TimeOnly(18, 0), daysBefore: 2);
+
+        Assert.Equal(0, _reminders.Check(_home, At(Today, 9, 0)));
+        Assert.Equal(1, _reminders.Check(_home, At(Today, 18, 0)));
+        Assert.Equal("Pay rent is due in 2 days", FeedOf(_robin, At(Today, 18, 0)).Single().Title);
+    }
+
+    [Fact]
+    public void A_timed_task_fires_at_the_same_clock_time_on_both_sides_of_a_clock_change()
+    {
+        // US clocks go back on Sunday 1 November 2026: -07:00 before, -08:00 after.
+        var sunday = new DateOnly(2026, 11, 1);
+        AddTimed("Water plants", sunday, new TimeOnly(14, 5));
+        var winter = TimeSpan.FromHours(-8);
+
+        Assert.Equal(0, _reminders.Check(_home, At(sunday, 13, 5, winter)));
+        Assert.Equal(1, _reminders.Check(_home, At(sunday, 14, 5, winter)));
+    }
+
+    [Fact]
+    public void An_alarm_comes_through_quiet_hours_but_a_plain_reminder_waits()
+    {
+        _notifications.SetQuietHours(_robin.Id, new QuietHours(new TimeOnly(22, 0), new TimeOnly(7, 0)));
+        AddTimed("Wake up", Today, new TimeOnly(6, 30), alarm: true);
+        AddTimed("Check email", Today, new TimeOnly(6, 30));
+
+        _reminders.Check(_home, At(Today, 6, 30));
+
+        var shown = Assert.Single(FeedOf(_robin, At(Today, 6, 31)));
+        Assert.Equal("Wake up is due now", shown.Title);
+        Assert.Equal(2, FeedOf(_robin, At(Today, 7, 0)).Count);
+    }
+
+    [Fact]
+    public void A_snoozed_reminder_comes_back_later_and_only_once()
+    {
+        AddTimed("Call the vet", Today, new TimeOnly(14, 0));
+        _reminders.Check(_home, At(Today, 14, 0));
+        var original = Assert.Single(FeedOf(_robin, At(Today, 14, 0)));
+
+        _notifications.Snooze(original.Id, At(Today, 14, 10), At(Today, 14, 0));
+        _reminders.Check(_home, At(Today, 14, 5));
+
+        Assert.NotNull(Assert.Single(FeedOf(_robin, At(Today, 14, 9))).ReadAt);
+        var back = FeedOf(_robin, At(Today, 14, 10));
+        Assert.Equal(2, back.Count);
+        Assert.Contains(back, n => n.ReadAt is null && n.Title == "Call the vet is due now");
+        Assert.Throws<ArgumentException>(() => _notifications.Snooze(original.Id, At(Today, 13, 0), At(Today, 14, 0)));
+    }
 }

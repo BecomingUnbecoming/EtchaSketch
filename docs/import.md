@@ -24,11 +24,15 @@ choose the file (or paste its text), choose **Check the file** to see what would
 | `shared`, `done`, `source` | Household task, left out, duplicate check |
 | `project`, `labels` | Project and labels |
 | `remindDaysBefore` (`1`) | A reminder that many days before the due date, as well as on it |
+| `dueTime` (`14:05`) | A time of day on the due date; reminders come at that time |
+| `remindMinutesBefore` (`15`) | Another reminder that many minutes before the due time |
 
 Start dates, attachments and comments aren't carried over. Links to other tasks (blocked by,
 related…) are written into the notes as lines like `Blocked by: Install the SDK`. The Vikunja
-converter turns reminders set a number of days before a due date into `remindDaysBefore`; reminders at
-a fixed time of day aren't carried over.
+converter turns the due date's time of day into `dueTime` (Vikunja can't store a date without a time, so
+midnight counts as "no time"), reminders a number of days before the due date into `remindDaysBefore`,
+and reminders less than a day before it into `remindMinutesBefore`. Reminders at a fixed date and time
+that isn't tied to the due date aren't carried over.
 
 ## The file
 
