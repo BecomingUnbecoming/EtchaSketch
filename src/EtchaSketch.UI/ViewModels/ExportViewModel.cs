@@ -46,7 +46,7 @@ public partial class ExportViewModel(AppSession session, Household household, Pr
     {
         ExportKind.Spreadsheet => TaskExport.ToCsv(session.Tasks, household, me),
         ExportKind.Calendar => TaskExport.ToIcs(session.Tasks, me, session.Now),
-        _ => TaskExport.ToJson(session.Tasks, me, session.Now),
+        _ => TaskExport.ToJson(session.Tasks, me, session.Now, session.ExportHousehold(household.Id)),
     };
 
     public void Saved(ExportKind kind, string where) => Status = kind switch

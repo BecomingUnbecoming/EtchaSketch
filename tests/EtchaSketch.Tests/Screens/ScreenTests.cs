@@ -1035,4 +1035,43 @@ public sealed class ScreenTests : IDisposable
         var chore = Assert.Single(home.ChoreColumns.SelectMany(column => column.Chores));
         Assert.Equal("Water plants", chore.Title);
     }
+
+    [Fact]
+    public void Everything_export_brings_the_household_modules_back_on_a_fresh_install()
+    {
+        var home = SetUp(Launch());
+        home.Pantry.Name = "Milk";
+        home.Pantry.SaveCommand.Execute(null);
+        home.Inventory.Name = "Ladder";
+        home.Inventory.SaveCommand.Execute(null);
+        AddTask(home, "Clean gutters");
+        home.OpenExportCommand.Execute(null);
+        var file = home.Export!.Build(ExportKind.Everything);
+
+        var other = new ScreenTests();
+        try
+        {
+            var fresh = other.SetUp(other.Launch());
+            fresh.OpenImportCommand.Execute(null);
+            fresh.Import!.FileText = file;
+            fresh.Import.PreviewCommand.Execute(null);
+            Assert.Equal("Ready to add 1 task. Household: 1 pantry item, 1 thing.", fresh.Import.Summary);
+            fresh.Import.ImportCommand.Execute(null);
+            fresh.Import.CloseCommand.Execute(null);
+
+            Assert.Equal(["Milk"], fresh.Pantry.Items.Select(row => row.Name));
+            Assert.Equal(["Ladder"], fresh.Inventory.Items.Select(row => row.Name));
+            Assert.Contains(fresh.MyTasks, row => row.Title == "Clean gutters");
+
+            fresh.OpenImportCommand.Execute(null);
+            fresh.Import!.FileText = file;
+            fresh.Import.PreviewCommand.Execute(null);
+            Assert.Equal("Ready to add 0 tasks, 1 already here. Household: nothing new (2 already here).", fresh.Import.Summary);
+            Assert.False(fresh.Import.CanImport);
+        }
+        finally
+        {
+            other.Dispose();
+        }
+    }
 }
