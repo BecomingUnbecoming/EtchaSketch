@@ -85,6 +85,16 @@ public partial class InventoryViewModel : ViewModelBase
 
     public bool IsShowingDetail => Detail is not null;
 
+    /// <summary>The Homebox / LubeLogger import panel, or null when closed.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsImporting))]
+    public partial ThingsImportViewModel? Importer { get; private set; }
+
+    public bool IsImporting => Importer is not null;
+
+    [RelayCommand]
+    private void OpenImport() => Importer = new ThingsImportViewModel(_session, _household, _changed, () => Importer = null);
+
     public IReadOnlyList<AssigneeOption> WhoHasItOptions { get; }
 
     [ObservableProperty]

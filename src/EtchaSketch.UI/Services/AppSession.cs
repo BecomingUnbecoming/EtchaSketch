@@ -8,6 +8,7 @@ using EtchaSketch.Data.Pantry;
 using EtchaSketch.Data.Profiles;
 using EtchaSketch.Data.Storage;
 using EtchaSketch.Data.Sync;
+using EtchaSketch.Core.Pantry;
 using EtchaSketch.Core.Profiles;
 using EtchaSketch.Data.Tasks;
 using Microsoft.Data.Sqlite;
@@ -32,8 +33,10 @@ public sealed class AppSession : IDisposable
     private readonly string? _deviceName;
 
     private AppSession(SqliteConnection connection, TimeProvider clock, Func<Uri, ISyncServer> syncServers, IDeviceUnlock? deviceUnlock,
-        IReminderScheduler? reminderScheduler, string? deviceName)
+        IReminderScheduler? reminderScheduler, string? deviceName, IProductLookup? productLookup, IBarcodeScanner? barcodeScanner)
     {
+        _productLookup = productLookup;
+        BarcodeScanner = barcodeScanner;
         _connection = connection;
         _deviceName = deviceName;
         _reminderScheduler = reminderScheduler;
@@ -81,6 +84,14 @@ public sealed class AppSession : IDisposable
     /// <summary>Warns when something in stock is about to go off.</summary>
     public PantryAlerts PantryAlerts { get; }
 
+    private IProductLookup? _productLookup;
+
+    /// <summary>Looks barcodes up in Open Food Facts, set up the first time someone presses "Look up".</summary>
+    public IProductLookup Products => _productLookup ??= OpenFoodFacts.Create();
+
+    /// <summary>The camera's barcode scanner, or null where there is none.</summary>
+    public IBarcodeScanner? BarcodeScanner { get; }
+
     /// <summary>Each person's PIN on this device.</summary>
     public ProfileLocks Locks { get; }
 
@@ -123,7 +134,7 @@ public sealed class AppSession : IDisposable
 
         return new AppSession(connection, environment.Clock ?? TimeProvider.System,
             environment.SyncServerFactory ?? (address => new HttpSyncServer(new HttpClient { BaseAddress = address, Timeout = TimeSpan.FromSeconds(30) })),
-            environment.DeviceUnlock, environment.ReminderScheduler, environment.DeviceName);
+            environment.DeviceUnlock, environment.ReminderScheduler, environment.DeviceName, environment.ProductLookup, environment.BarcodeScanner);
     }
 
     /// <summary>
