@@ -948,4 +948,46 @@ public sealed class ScreenTests : IDisposable
             other.Dispose();
         }
     }
+
+    [Fact]
+    public void Things_and_a_vehicles_records_are_imported_from_the_things_tab()
+    {
+        var home = SetUp(Launch());
+        var things = home.Inventory;
+        things.OpenImportCommand.Execute(null);
+        var import = things.Importer!;
+
+        import.FileText = "HB.name,HB.location,HB.asset_id,HB.archived\nLadder,Home / Shed,000-001,false\nOld TV,Home,000-002,true\n";
+        import.PreviewCommand.Execute(null);
+        Assert.Equal("Ready to add 1 thing, 1 left out.", import.Summary);
+        Assert.Equal("Row 3: Old TV is archived in Homebox", import.Problems);
+        Assert.Empty(things.Items);
+        import.ImportCommand.Execute(null);
+        Assert.Equal("Added 1 thing, 1 left out.", import.Summary);
+        Assert.False(import.CanImport);
+        Assert.Equal(["Ladder"], things.Items.Select(row => row.Name));
+
+        import.Source = import.Sources.Single(source => source.Source == ThingsSource.LubeLogger);
+        Assert.True(import.HasNoVehicles);
+        import.FileText = "Date,Odometer,FuelConsumed,Cost\n2026-10-20,40100,40,70\n";
+        import.PreviewCommand.Execute(null);
+        Assert.StartsWith("Add the vehicle on the Things tab first", import.ErrorMessage, StringComparison.Ordinal);
+        import.CloseCommand.Execute(null);
+        Assert.False(things.IsImporting);
+
+        things.Name = "Corolla";
+        things.IsVehicle = true;
+        things.SaveCommand.Execute(null);
+        things.OpenImportCommand.Execute(null);
+        import = things.Importer!;
+        import.Source = import.Sources.Single(source => source.Source == ThingsSource.LubeLogger);
+        Assert.Equal("Corolla", import.Vehicle!.Label);
+        import.FileText = "Date,Odometer,FuelConsumed,Cost\n2026-10-20,40100,40,70\n";
+        import.PreviewCommand.Execute(null);
+        import.ImportCommand.Execute(null);
+        Assert.Equal("Added 1 log entry.", import.Summary);
+
+        things.Items.Single(row => row.Name == "Corolla").DetailCommand.Execute(null);
+        Assert.Equal("At 40,100 km · spent 70.00 in total", things.Detail!.Summary);
+    }
 }

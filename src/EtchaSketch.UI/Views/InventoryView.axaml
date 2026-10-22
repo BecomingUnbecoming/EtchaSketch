@@ -11,7 +11,11 @@
 
     <ScrollViewer>
         <StackPanel Spacing="10" Margin="0,8,0,0">
-            <Button Content="Add something" Command="{Binding OpenFormCommand}" IsVisible="{Binding !IsFormOpen}" />
+            <WrapPanel IsVisible="{Binding !IsFormOpen}">
+                <Button Content="Add something" Command="{Binding OpenFormCommand}" Margin="0,0,8,0" />
+                <Button Content="Import from Homebox or LubeLogger" Command="{Binding OpenImportCommand}" IsVisible="{Binding !IsImporting}" />
+            </WrapPanel>
+            <ContentControl Content="{Binding Importer}" IsVisible="{Binding IsImporting}" />
             <Border Padding="12" CornerRadius="8" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" IsVisible="{Binding IsFormOpen}">
                 <StackPanel Spacing="8">
                     <TextBlock Text="{Binding SaveLabel}" FontWeight="SemiBold" />

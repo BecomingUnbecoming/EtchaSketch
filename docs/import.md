@@ -66,3 +66,33 @@ VIKUNJA_TOKEN=… python3 tools/vikunja-to-etchasketch.py https://tasks.example.
 ```
 
 The file is plain text and private, so delete it once you've imported.
+
+## Things from Homebox, records from LubeLogger
+
+On the **Things** tab, **Import from Homebox or LubeLogger** reads the CSV files those apps export.
+**Check the file** says what would happen; **Import** does it. Importing the same file again adds nothing.
+
+**Homebox** (Tools → Export inventory) becomes the household's things:
+
+- name, place (as Homebox's path, "Home / Garage / Shelf 2"), first tag as the kind, serial number
+- purchase date and price, warranty end date
+- the rest (description, notes, make and model, quantity, where it was bought, lifetime warranty,
+  custom fields) goes into the notes
+
+Archived and sold items are left out and listed. Each item's notes end with
+"Imported from Homebox (asset …)", which is how a second import knows it's already there.
+Photos, receipts and attachments aren't carried over.
+
+**LubeLogger** exports one CSV per vehicle and kind of record. Add the vehicle on the Things tab first
+(tick "It's a vehicle"), then import each file into it:
+
+- fuel records: recognised by their FuelConsumed column; litres, cost, distance, partial and missed fill-ups
+- service records, repairs, upgrades: choose which the file holds
+- description, notes and tags go into each entry's note
+
+LubeLogger writes dates the way its server is set up. The file decides: a date like 21/10 can only be day
+first, 10/21 only month first. If nothing in the file tells, month first is used (LubeLogger's default),
+and the check says how dates were read. Look at a few entries afterwards.
+
+Entries already in the log (same day, kind, distance and cost) are left out. LubeLogger's reminders and
+plans aren't carried over; add them as upkeep on the vehicle.
