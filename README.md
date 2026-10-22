@@ -32,3 +32,7 @@ To install and keep up to date (phones through Obtainium, the Linux desktop thro
 ## License
 
 AGPL-3.0. See [LICENSE](LICENSE).
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). This repository is public: keep real names, home network details and secrets out of it.
