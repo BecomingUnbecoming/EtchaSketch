@@ -368,6 +368,7 @@ public sealed class SyncEngineTests : IAsyncLifetime
             Inventory = new Data.Pantry.InventoryRepository(_db);
             Upkeep = new Data.Pantry.UpkeepRepository(_db, Inventory);
             Events = new Data.Calendar.EventRepository(_db);
+            Subscriptions = new Data.Calendar.SubscriptionRepository(_db);
         }
 
         public Data.Pantry.PantryRepository Pantry { get; }
@@ -377,6 +378,8 @@ public sealed class SyncEngineTests : IAsyncLifetime
         public Data.Pantry.UpkeepRepository Upkeep { get; }
 
         public Data.Calendar.EventRepository Events { get; }
+
+        public Data.Calendar.SubscriptionRepository Subscriptions { get; }
 
         public ManualClock Clock { get; } = new(Wednesday);
 
@@ -633,5 +636,21 @@ public sealed class SyncEngineTests : IAsyncLifetime
         var robins = robinsPhone.Events.VisibleTo(_robin.Id, monday, monday);
         Assert.Equal(["Therapy session", "Dinner at Mum's"], robins.Select(found => found.Title));
         Assert.Equal("Bring the good wine", robins.Single(found => found.Title == "Dinner at Mum's").Notes);
+    }
+
+    [Fact]
+    public async Task A_shared_subscription_reaches_the_household_but_what_was_fetched_and_private_links_stay_put()
+    {
+        var school = _desktop.Subscriptions.Add(_home.Id, _robin.Id, "School", "https://school.example/term.ics", shared: true);
+        _desktop.Subscriptions.Add(_home.Id, _robin.Id, "Work", "https://work.example/secret-token-123.ics", shared: false);
+        _desktop.Subscriptions.SaveFetched(school.Id, "BEGIN:VCALENDAR\r\nX-FETCHED-ON-DESKTOP:yes\r\nEND:VCALENDAR", Wednesday);
+        await _desktop.Sync.SyncAsync();
+
+        var kaisPhone = await JoinAs(_kai, "kai-phone");
+
+        Assert.Equal(["School"], kaisPhone.Subscriptions.VisibleTo(_kai.Id).Select(found => found.Name));
+        Assert.Null(kaisPhone.Subscriptions.Cached(school.Id));
+        Assert.False(kaisPhone.Contains("X-FETCHED-ON-DESKTOP"));
+        Assert.False(kaisPhone.Contains("secret-token-123"));
     }
 }

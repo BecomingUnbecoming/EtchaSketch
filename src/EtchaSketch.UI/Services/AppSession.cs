@@ -34,10 +34,11 @@ public sealed class AppSession : IDisposable
 
     private AppSession(SqliteConnection connection, TimeProvider clock, Func<Uri, ISyncServer> syncServers, IDeviceUnlock? deviceUnlock,
         IReminderScheduler? reminderScheduler, string? deviceName, IProductLookup? productLookup, IBarcodeScanner? barcodeScanner,
-        Func<Uri, string, Func<string, Task<System.Text.Json.JsonElement>>>? grocyReader)
+        Func<Uri, string, Func<string, Task<System.Text.Json.JsonElement>>>? grocyReader, Func<Uri, Task<string>>? calendarFetcher)
     {
         _productLookup = productLookup;
         _grocyReader = grocyReader;
+        _calendarFetcher = calendarFetcher;
         BarcodeScanner = barcodeScanner;
         _connection = connection;
         _deviceName = deviceName;
@@ -56,7 +57,8 @@ public sealed class AppSession : IDisposable
         Inventory = new InventoryRepository(connection);
         Upkeep = new UpkeepRepository(connection, Inventory);
         Events = new EtchaSketch.Data.Calendar.EventRepository(connection);
-        Calendar = new EtchaSketch.Data.Calendar.CalendarFeed(Tasks, Events, Inventory, Upkeep, Meals);
+        Subscriptions = new EtchaSketch.Data.Calendar.SubscriptionRepository(connection);
+        Calendar = new EtchaSketch.Data.Calendar.CalendarFeed(Tasks, Events, Inventory, Upkeep, Meals, Subscriptions, clock.LocalTimeZone);
         Locks = new ProfileLocks(connection);
 
         if (_settings.Get(SyncServerSetting) is { } address && Uri.TryCreate(address, UriKind.Absolute, out var server))
@@ -84,6 +86,16 @@ public sealed class AppSession : IDisposable
 
     /// <summary>Calendar events and time blocks.</summary>
     public EtchaSketch.Data.Calendar.EventRepository Events { get; }
+
+    private Func<Uri, Task<string>>? _calendarFetcher;
+
+    /// <summary>Fetches the calendars this person follows that are due a fetch (or all, when forced).</summary>
+    public Task<EtchaSketch.Data.Calendar.FetchResult> FetchCalendarsAsync(Guid personId, bool force = false) =>
+        EtchaSketch.Data.Calendar.SubscriptionFetcher.RefreshAsync(Subscriptions, personId,
+            _calendarFetcher ??= EtchaSketch.Data.Calendar.SubscriptionFetcher.Http(new HttpClient { Timeout = TimeSpan.FromSeconds(30) }), Now, force);
+
+    /// <summary>Calendars followed by link.</summary>
+    public EtchaSketch.Data.Calendar.SubscriptionRepository Subscriptions { get; }
 
     /// <summary>Everything dated, from every module, for one person's calendar.</summary>
     public EtchaSketch.Data.Calendar.CalendarFeed Calendar { get; }
@@ -151,7 +163,7 @@ public sealed class AppSession : IDisposable
 
         return new AppSession(connection, environment.Clock ?? TimeProvider.System,
             environment.SyncServerFactory ?? (address => new HttpSyncServer(new HttpClient { BaseAddress = address, Timeout = TimeSpan.FromSeconds(30) })),
-            environment.DeviceUnlock, environment.ReminderScheduler, environment.DeviceName, environment.ProductLookup, environment.BarcodeScanner, environment.GrocyReader);
+            environment.DeviceUnlock, environment.ReminderScheduler, environment.DeviceName, environment.ProductLookup, environment.BarcodeScanner, environment.GrocyReader, environment.CalendarFetcher);
     }
 
     /// <summary>

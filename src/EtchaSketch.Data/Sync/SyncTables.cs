@@ -96,6 +96,13 @@ internal sealed record SyncTable(
             Upsert: "UPDATE calendar_events SET notes = $notes WHERE id = $id",
             Delete: "UPDATE calendar_events SET notes = NULL WHERE id = $id"),
 
+        // The link may carry a private token, so a subscription is private unless shared. What was
+        // fetched (subscription_cache) never syncs.
+        new("calendar_subscriptions", "SELECT * FROM calendar_subscriptions", ["id"],
+            (row, _) => Convert.ToInt32(row["tier"]) <= (int)PrivacyTier.Household
+                ? SyncScopes.Household(row["household_id"])
+                : SyncScopes.Person(row["owner_id"])),
+
         new("quiet_hours", "SELECT * FROM quiet_hours", ["profile_id"], (row, _) => SyncScopes.Person(row["profile_id"])),
 
         new("notifications", "SELECT * FROM notifications", ["id"], (row, _) => SyncScopes.Person(row["recipient_id"])),

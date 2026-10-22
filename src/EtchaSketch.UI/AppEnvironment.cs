@@ -15,6 +15,7 @@ namespace EtchaSketch.UI;
 /// <param name="ProductLookup">Looks barcodes up online. Null means Open Food Facts; tests pass a fake.</param>
 /// <param name="BarcodeScanner">Scans barcodes with the camera. Null where the platform can't.</param>
 /// <param name="GrocyReader">Reads Grocy's API at an address with a key. Null means over HTTP; tests pass a fake.</param>
+/// <param name="CalendarFetcher">Fetches a subscribed calendar by its link. Null means over HTTP; tests pass a fake.</param>
 public sealed record AppEnvironment(
     string DatabasePath,
     IKeyStore KeyStore,
@@ -25,4 +26,5 @@ public sealed record AppEnvironment(
     string? DeviceName = null,
     IProductLookup? ProductLookup = null,
     IBarcodeScanner? BarcodeScanner = null,
-    Func<Uri, string, Func<string, System.Threading.Tasks.Task<System.Text.Json.JsonElement>>>? GrocyReader = null);
+    Func<Uri, string, Func<string, System.Threading.Tasks.Task<System.Text.Json.JsonElement>>>? GrocyReader = null,
+    Func<Uri, System.Threading.Tasks.Task<string>>? CalendarFetcher = null);

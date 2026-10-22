@@ -27,6 +27,7 @@ public sealed class CalendarTests : IDisposable
     private readonly UpkeepRepository _upkeep;
     private readonly MealRepository _meals;
     private readonly CalendarFeed _feed;
+    private readonly SubscriptionRepository _subscriptions;
     private readonly Household _home;
     private readonly Profile _robin;
     private readonly Profile _kai;
@@ -47,7 +48,8 @@ public sealed class CalendarTests : IDisposable
         _upkeep = new UpkeepRepository(_db, _inventory);
         var pantry = new PantryRepository(_db);
         _meals = new MealRepository(_db, pantry);
-        _feed = new CalendarFeed(_tasks, _events, _inventory, _upkeep, _meals);
+        _subscriptions = new SubscriptionRepository(_db);
+        _feed = new CalendarFeed(_tasks, _events, _inventory, _upkeep, _meals, _subscriptions, TimeZoneInfo.FindSystemTimeZoneById("Europe/London"));
     }
 
     public void Dispose()
