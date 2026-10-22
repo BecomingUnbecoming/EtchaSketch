@@ -154,6 +154,13 @@ public sealed class AppSession : IDisposable
     public void ScheduleReminders(Household household, Profile person) =>
         _reminderScheduler?.Replace(Reminders.Upcoming(household, person.Id, Now, ReminderHorizon));
 
+    /// <summary>The household's shared modules, for the "Everything" export.</summary>
+    public System.Text.Json.Nodes.JsonObject ExportHousehold(Guid householdId) => EtchaSketch.Data.Import.HouseholdBackup.Export(_connection, householdId);
+
+    /// <summary>Puts an export's household modules back; rows already here are left as they are.</summary>
+    public EtchaSketch.Data.Import.HouseholdRestore RestoreHousehold(System.Text.Json.Nodes.JsonObject backup, Guid householdId, bool dryRun) =>
+        EtchaSketch.Data.Import.HouseholdBackup.Restore(_connection, backup, householdId, dryRun);
+
     /// <summary>Starts syncing a household set up on this device through the server at an address.</summary>
     public async Task TurnOnSyncAsync(Uri address, Guid householdId, string? joinToken = null, CancellationToken cancellationToken = default)
     {

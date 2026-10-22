@@ -17,4 +17,11 @@ left out on import, the same as for any import. The file uses the format in [imp
 a few extra fields (`dueTime`, `remindMinutesBefore`, `alarm`) and each task's `source` set to
 `etchasketch:<id>`.
 
+**The household's shared modules** are in the `.json` too, under `"household"`: the pantry, the
+shopping list, recipes, the meal plan, things (the inventory), their upkeep and their logs. They're
+stored row by row with their ids, so importing the file on a fresh install brings each one back as
+itself, and importing it again adds nothing. The import check says what's there ("Household: 12 pantry
+items, 3 things"). A file from a newer version still imports; anything this version doesn't know is
+skipped. The spreadsheet and calendar files are still tasks only.
+
 The files aren't encrypted. Keep them somewhere private, and delete copies you don't need.

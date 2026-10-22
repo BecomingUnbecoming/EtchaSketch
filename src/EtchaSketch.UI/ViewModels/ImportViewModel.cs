@@ -16,6 +16,7 @@ namespace EtchaSketch.UI.ViewModels;
 public partial class ImportViewModel(AppSession session, Household household, Profile me, Action<bool> close, Action? imported = null) : ViewModelBase
 {
     private IReadOnlyList<ImportedTask>? _tasks;
+    private System.Text.Json.Nodes.JsonObject? _household;
     private bool _imported;
 
     /// <summary>Bringing a Grocy household in through its API.</summary>
@@ -49,6 +50,7 @@ public partial class ImportViewModel(AppSession session, Household household, Pr
     partial void OnFileTextChanged(string value)
     {
         _tasks = null;
+        _household = null;
         _imported = false;
         CanImport = false;
         Summary = null;
@@ -62,15 +64,18 @@ public partial class ImportViewModel(AppSession session, Household household, Pr
         try
         {
             _tasks = TaskImport.Parse(FileText);
+            _household = Data.Import.HouseholdBackup.Read(FileText);
             var result = TaskImport.Apply(session.Tasks, household.Id, me.Id, _tasks, dryRun: true);
-            Summary = Describe(result, "Ready to add");
+            var restore = _household is null ? null : session.RestoreHousehold(_household, household.Id, dryRun: true);
+            Summary = Describe(result, "Ready to add") + Describe(restore);
             Problems = Joined(result);
-            CanImport = result.Added > 0;
+            CanImport = result.Added > 0 || restore?.Total > 0;
             ErrorMessage = null;
         }
         catch (FormatException exception)
         {
             _tasks = null;
+            _household = null;
             CanImport = false;
             Summary = null;
             Problems = null;
@@ -87,9 +92,10 @@ public partial class ImportViewModel(AppSession session, Household household, Pr
         }
 
         var result = TaskImport.Apply(session.Tasks, household.Id, me.Id, _tasks);
+        var restore = _household is null ? null : session.RestoreHousehold(_household, household.Id, dryRun: false);
         _imported = true;
         CanImport = false;
-        Summary = Describe(result, "Added");
+        Summary = Describe(result, "Added") + Describe(restore);
         Problems = Joined(result);
         IsFinished = true;
         imported?.Invoke();
@@ -151,6 +157,20 @@ public partial class ImportViewModel(AppSession session, Household household, Pr
     }
 
     private static string Count(int number) => number == 1 ? "1 task" : $"{number} tasks";
+
+    private static string Singular(string plural) => plural switch
+    {
+        "things" => "thing",
+        "log entries" => "log entry",
+        _ => plural.TrimEnd('s'),
+    };
+
+    // " Household: 12 pantry items, 3 recipes (40 already here)." for an export's shared modules.
+    private static string Describe(Data.Import.HouseholdRestore? restore) =>
+        restore is null || restore.Total == 0 && restore.AlreadyThere == 0
+            ? ""
+            : " Household: " + (restore.Total == 0 ? "nothing new" : string.Join(", ", restore.Added.Select(pair => $"{pair.Value} {(pair.Value == 1 ? Singular(pair.Key) : pair.Key)}")))
+              + (restore.AlreadyThere > 0 ? $" ({restore.AlreadyThere} already here)" : "") + ".";
 
     private static string? Joined(ImportResult result) =>
         result.Problems.Count == 0 ? null : string.Join('\n', result.Problems.Take(10)) + (result.Problems.Count > 10 ? $"\n…and {result.Problems.Count - 10} more." : "");

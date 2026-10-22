@@ -24,13 +24,17 @@ public static class TaskExport
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    private sealed record Document(string Format, int Version, string ExportedAt, string ExportedBy, IReadOnlyList<ImportedTask> Tasks);
+    private sealed record Document(string Format, int Version, string ExportedAt, string ExportedBy, IReadOnlyList<ImportedTask> Tasks,
+        System.Text.Json.Nodes.JsonObject? Household);
 
-    /// <summary>Every task this person may see, open and finished, as an import file.</summary>
-    public static string ToJson(TaskRepository tasks, Profile person, DateTimeOffset now) =>
+    /// <summary>
+    /// Every task this person may see, open and finished, as an import file; with
+    /// <paramref name="household"/>, the household's shared modules too (see Import.HouseholdBackup).
+    /// </summary>
+    public static string ToJson(TaskRepository tasks, Profile person, DateTimeOffset now, System.Text.Json.Nodes.JsonObject? household = null) =>
         JsonSerializer.Serialize(
             new Document(TaskImport.Format, 1, now.ToString("O", CultureInfo.InvariantCulture), person.DisplayName,
-                tasks.ExportableBy(person.Id).Select(task => ToImported(task, tasks, person.Id)).ToList()),
+                tasks.ExportableBy(person.Id).Select(task => ToImported(task, tasks, person.Id)).ToList(), household),
             Json);
 
     /// <summary>Every task this person may see, as a spreadsheet (comma-separated, one row per task).</summary>
