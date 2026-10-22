@@ -52,5 +52,5 @@ It expects the app in `~/.local/share/EtchaSketch` (change with `ETCHASKETCH_DIR
   `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_ALIAS`, with an offline copy. **If the key is lost, installed
   phones can't update again** without the uninstall above, so keep that copy safe.
 - Forks don't get the secrets, so their APKs use a throwaway key and are never released.
-- The version code is the CI run number, so it grows with every build.
+- The version code is the CI run number plus 100 (`BUILD_NUMBER_OFFSET`), so it grows with every build and stays above builds made before the repository was recreated.
 - Only the ten newest releases are kept.

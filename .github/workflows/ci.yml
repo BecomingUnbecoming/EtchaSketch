@@ -9,6 +9,10 @@ on:
 env:
   DOTNET_CLI_TELEMETRY_OPTOUT: 1
   DOTNET_NOLOGO: 1
+  # Build numbers are the CI run number plus this, so they keep growing past builds made before the
+  # repository was recreated on 2026-10-22 (the last of those was 1.0.70). Android only installs an
+  # update whose version code is higher than the installed one.
+  BUILD_NUMBER_OFFSET: 100
 
 jobs:
   test:
@@ -94,7 +98,8 @@ jobs:
           EXPECTED_CERT_SHA256: 71f8cc94d62892a69f4fcfa2b40d481ce95a09d01130981d9439b2557f00d1b1
         run: |
           # The version code must grow with every build, or Android won't treat it as an update.
-          VERSION="-p:ApplicationVersion=${{ github.run_number }} -p:ApplicationDisplayVersion=1.0.${{ github.run_number }}"
+          BUILD=$(( ${{ github.run_number }} + BUILD_NUMBER_OFFSET ))
+          VERSION="-p:ApplicationVersion=$BUILD -p:ApplicationDisplayVersion=1.0.$BUILD"
           if [ -z "$KEYSTORE_BASE64" ]; then
             echo "::warning::No release key available: this APK uses a throwaway key and can't update an installed app."
             dotnet publish src/EtchaSketch.Android -c Release -o out $VERSION
@@ -171,9 +176,9 @@ jobs:
       - name: Package and publish
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: 1.0.${{ github.run_number }}
         run: |
           set -eu
+          VERSION="1.0.$(( ${{ github.run_number }} + BUILD_NUMBER_OFFSET ))"
           cp android/*-Signed.apk "EtchaSketch-$VERSION.apk"
           tar -C desktop-linux-x64 -czf "EtchaSketch-desktop-linux-x64-$VERSION.tar.gz" .
           sha256sum "EtchaSketch-$VERSION.apk" "EtchaSketch-desktop-linux-x64-$VERSION.tar.gz" > SHA256SUMS
@@ -181,6 +186,10 @@ jobs:
             --title "EtchaSketch $VERSION" \
             --notes "Built automatically from $GITHUB_SHA. Phones update through Obtainium; the desktop through tools/linux-updater. See docs/updates.md." \
             "EtchaSketch-$VERSION.apk" "EtchaSketch-desktop-linux-x64-$VERSION.tar.gz" SHA256SUMS
+          # Two merges close together can finish out of order; "latest" must always be the newest build.
+          NEWEST=$(gh release list -R "$GITHUB_REPOSITORY" --limit 200 --json tagName -q '.[].tagName' \
+            | grep -E '^v1\.0\.[0-9]+$' | sort -t. -k3 -n -r | head -1)
+          gh release edit "$NEWEST" -R "$GITHUB_REPOSITORY" --latest
           # Keep the ten newest builds.
           gh release list -R "$GITHUB_REPOSITORY" --limit 200 --json tagName -q '.[].tagName' \
             | grep -E '^v1\.0\.[0-9]+$' | sort -t. -k3 -n -r | tail -n +11 \
