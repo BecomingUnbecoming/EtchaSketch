@@ -35,7 +35,7 @@ internal sealed record SyncTable(
             """
             SELECT id, household_id, owner_id, title, due, priority, assignee_id, recurrence_frequency,
                    recurrence_interval, completed_at, tier, created_at, project, labels, remind_days_before,
-                   due_time, remind_minutes_before, alarm
+                   due_time, remind_minutes_before, alarm, parent_id
             FROM tasks
             """,
             ["id"],
@@ -51,10 +51,35 @@ internal sealed record SyncTable(
         new("task_completions", "SELECT * FROM task_completions", ["task_id", "profile_id", "completed_at"],
             (row, taskScopes) => taskScopes.GetValueOrDefault(Convert.ToString(row["task_id"])!)),
 
+        // A link between two shared tasks is shared; one touching a private task stays with that task's owner.
+        new("task_links", "SELECT * FROM task_links", ["from_task", "to_task", "kind"],
+            (row, taskScopes) =>
+                taskScopes.GetValueOrDefault(Convert.ToString(row["from_task"])!) is { } from
+                && taskScopes.GetValueOrDefault(Convert.ToString(row["to_task"])!) is { } to
+                    ? from.StartsWith(SyncScopes.PersonPrefix, StringComparison.Ordinal) ? from : to
+                    : null),
+
+        new("task_comments", "SELECT * FROM task_comments", ["id"],
+            (row, taskScopes) => taskScopes.GetValueOrDefault(Convert.ToString(row["task_id"])!)),
+
+        new("devices", "SELECT * FROM devices", ["id"], (row, _) => SyncScopes.Household(row["household_id"])),
+
+        // The pantry is the household's. Anything marked more private stays on the device it was made on.
+        new("stock_items", "SELECT * FROM stock_items", ["id"], (row, _) => SharedOnly(row)),
+
+        new("shopping_items", "SELECT * FROM shopping_items", ["id"], (row, _) => SharedOnly(row)),
+
+        new("recipes", "SELECT * FROM recipes", ["id"], (row, _) => SharedOnly(row)),
+
+        new("planned_meals", "SELECT * FROM planned_meals", ["id"], (row, _) => SharedOnly(row)),
+
         new("quiet_hours", "SELECT * FROM quiet_hours", ["profile_id"], (row, _) => SyncScopes.Person(row["profile_id"])),
 
         new("notifications", "SELECT * FROM notifications", ["id"], (row, _) => SyncScopes.Person(row["recipient_id"])),
     ];
+
+    private static string? SharedOnly(IReadOnlyDictionary<string, object?> row) =>
+        Convert.ToInt32(row["tier"]) <= (int)PrivacyTier.Household ? SyncScopes.Household(row["household_id"]) : null;
 }
 
 internal static class SyncScopes

@@ -1,0 +1,71 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:EtchaSketch.UI.ViewModels"
+             x:Class="EtchaSketch.UI.Views.PantryView"
+             x:DataType="vm:PantryViewModel">
+    <UserControl.Styles>
+        <Style Selector="TextBlock.warning">
+            <Setter Property="Foreground" Value="#C42B1C" />
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer>
+        <StackPanel Spacing="10" Margin="0,8,0,0">
+            <Border Padding="12" CornerRadius="8" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="{Binding SaveLabel}" FontWeight="SemiBold" />
+                    <TextBox Text="{Binding Name}" PlaceholderText="What, like Milk or AA batteries" />
+                    <WrapPanel>
+                        <NumericUpDown Value="{Binding Amount}" Minimum="0" Increment="1" FormatString="0.##" Width="130" Margin="0,0,8,8"
+                                       ToolTip.Tip="How much there is" />
+                        <TextBox Text="{Binding Unit}" PlaceholderText="Unit (kg, packs…)" Width="140" Margin="0,0,8,8" />
+                        <TextBox Text="{Binding Location}" PlaceholderText="Where (Fridge, Pantry…)" Width="180" Margin="0,0,8,8" />
+                    </WrapPanel>
+                    <WrapPanel>
+                        <CalendarDatePicker SelectedDate="{Binding BestBefore}" PlaceholderText="Best before (optional)" Margin="0,0,8,8" />
+                        <NumericUpDown Value="{Binding LowAt}" Minimum="0" Increment="1" FormatString="0.##" Width="190" Margin="0,0,8,8"
+                                       PlaceholderText="Running low at…" ToolTip.Tip="At or below this, it can go on the shopping list" />
+                    </WrapPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="{Binding SaveLabel}" Command="{Binding SaveCommand}" Classes="accent" />
+                        <Button Content="Cancel" Command="{Binding CancelEditCommand}" IsVisible="{Binding IsEditing}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <Button Content="Put what's running low on the shopping list" Command="{Binding AddLowToListCommand}" />
+            <TextBlock Text="{Binding Message}" TextWrapping="Wrap"
+                       IsVisible="{Binding Message, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            <TextBlock Text="Nothing in stock yet." Opacity="0.7" IsVisible="{Binding IsEmpty}" />
+
+            <ItemsControl ItemsSource="{Binding Items}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:StockRowViewModel">
+                        <Border Padding="12" Margin="0,0,0,8" CornerRadius="8"
+                                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                                <StackPanel Spacing="2">
+                                    <TextBlock FontWeight="SemiBold" TextWrapping="Wrap">
+                                        <Run Text="{Binding Name}" />
+                                        <Run Text=" · " />
+                                        <Run Text="{Binding AmountText}" />
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding Details}" FontSize="12" TextWrapping="Wrap" Opacity="0.8"
+                                               Classes.warning="{Binding IsExpiring}"
+                                               IsVisible="{Binding Details, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                </StackPanel>
+                                <WrapPanel Grid.Column="1" VerticalAlignment="Center" MaxWidth="260">
+                                    <Button Content="Use 1" Command="{Binding UseCommand}" Margin="0,0,4,4" />
+                                    <Button Content="To list" Command="{Binding AddToListCommand}" Margin="0,0,4,4" />
+                                    <Button Content="Edit" Command="{Binding EditCommand}" Margin="0,0,4,4" />
+                                    <Button Content="Delete" Command="{Binding DeleteCommand}" Margin="0,0,4,4" />
+                                </WrapPanel>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

@@ -19,8 +19,13 @@ public sealed class TaskRowViewModel
         bool canDelete,
         Action complete,
         Action edit,
-        Action delete)
+        Action delete,
+        IReadOnlyList<string>? waitingOn = null,
+        int openSteps = 0)
     {
+        IsStep = task.ParentId is not null;
+        WaitingText = waitingOn is { Count: > 0 } ? $"Waiting on {string.Join(", ", waitingOn)}" : null;
+        Id = task.Id;
         Title = view.TryGetValue(nameof(TaskItem.Title), out var title) ? title as string ?? "" : "";
         Notes = view.TryGetValue(nameof(TaskItem.Notes), out var notes) ? notes as string : null;
         CanDelete = canDelete;
@@ -70,8 +75,23 @@ public sealed class TaskRowViewModel
             details.Add("Shared");
         }
 
+        if (openSteps > 0)
+        {
+            details.Add(openSteps == 1 ? "1 step to do" : $"{openSteps} steps to do");
+        }
+
         Details = string.Join(" · ", details);
     }
+
+    public Guid Id { get; }
+
+    /// <summary>A step of another task, shown indented under it.</summary>
+    public bool IsStep { get; }
+
+    /// <summary>"Waiting on Install the SDK" while a task blocking this one is open, otherwise null.</summary>
+    public string? WaitingText { get; }
+
+    public bool IsWaiting => WaitingText is not null;
 
     public string Title { get; }
 

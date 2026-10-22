@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -18,6 +19,9 @@ public partial class TaskEditorViewModel : ViewModelBase
     private readonly Profile _me;
     private readonly TaskItem? _existing;
     private readonly Action<bool> _close;
+
+    // Links and comments save as soon as they're made, so closing without saving still changed something.
+    private bool _changedAlready;
 
     public TaskEditorViewModel(AppSession session, Household household, Profile me, TaskItem? existing, Action<bool> close)
     {
@@ -58,6 +62,21 @@ public partial class TaskEditorViewModel : ViewModelBase
         ];
         RemindBefore = MinutesOptions.Single(option => option.Minutes == existing?.RemindMinutesBefore);
         IsAlarm = existing?.Alarm ?? false;
+
+        // Only a top-level task can have steps, and a task with steps can't be one.
+        var candidates = session.Tasks.VisibleTo(me.Id).Where(task => task.Id != existing?.Id).ToList();
+        CanBeStep = existing is null || !session.Tasks.HasSubtasks(existing.Id);
+        ParentOptions =
+        [
+            new ParentOption("Not a step of another task", null),
+            .. candidates.Where(task => task.ParentId is null).Select(task => new ParentOption(task.Title, task.Id)),
+        ];
+        Parent = ParentOptions.FirstOrDefault(option => option.TaskId == existing?.ParentId) ?? ParentOptions[0];
+
+        LinkTargets = [.. candidates.Select(task => new ParentOption(task.Title, task.Id))];
+        NewLinkKind = LinkKinds[0];
+        LoadLinks();
+        LoadComments();
     }
 
     public string Heading => _existing is null ? "New task" : "Edit task";
@@ -107,6 +126,126 @@ public partial class TaskEditorViewModel : ViewModelBase
 
     [RelayCommand]
     private void ClearTime() => DueTime = null;
+
+    /// <summary>The task this one is a step of. A task with steps of its own can't become a step.</summary>
+    public IReadOnlyList<ParentOption> ParentOptions { get; }
+
+    [ObservableProperty]
+    public partial ParentOption Parent { get; set; }
+
+    public bool CanBeStep { get; }
+
+    /// <summary>Links and comments belong to a saved task, so they show once it exists.</summary>
+    public bool IsExisting => _existing is not null;
+
+    public ObservableCollection<LinkRowViewModel> Links { get; } = [];
+
+    public IReadOnlyList<LinkKindOption> LinkKinds { get; } =
+    [
+        new("Blocks", TaskLinkKind.Blocks, ThisFirst: true),
+        new("Is blocked by", TaskLinkKind.Blocks, ThisFirst: false),
+        new("Is related to", TaskLinkKind.Related, ThisFirst: true),
+    ];
+
+    [ObservableProperty]
+    public partial LinkKindOption NewLinkKind { get; set; }
+
+    public IReadOnlyList<ParentOption> LinkTargets { get; }
+
+    [ObservableProperty]
+    public partial ParentOption? NewLinkTarget { get; set; }
+
+    public ObservableCollection<CommentRowViewModel> Comments { get; } = [];
+
+    [ObservableProperty]
+    public partial string? NewComment { get; set; }
+
+    [RelayCommand]
+    private void AddLink()
+    {
+        if (_existing is null || NewLinkTarget?.TaskId is not { } other)
+        {
+            return;
+        }
+
+        try
+        {
+            var link = NewLinkKind.ThisFirst
+                ? new TaskLink(_existing.Id, other, NewLinkKind.Kind)
+                : new TaskLink(other, _existing.Id, NewLinkKind.Kind);
+            _session.Tasks.AddLink(link, _session.Now);
+            _changedAlready = true;
+            ErrorMessage = null;
+            NewLinkTarget = null;
+            LoadLinks();
+        }
+        catch (ArgumentException exception)
+        {
+            ErrorMessage = Messages.Friendly(exception);
+        }
+    }
+
+    [RelayCommand]
+    private void AddComment()
+    {
+        if (_existing is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _session.Tasks.AddComment(_existing.Id, _me.Id, NewComment ?? "", _session.Now);
+            _changedAlready = true;
+            ErrorMessage = null;
+            NewComment = null;
+            LoadComments();
+        }
+        catch (ArgumentException exception)
+        {
+            ErrorMessage = Messages.Friendly(exception);
+        }
+    }
+
+    private void LoadLinks()
+    {
+        Links.Clear();
+        if (_existing is null)
+        {
+            return;
+        }
+
+        foreach (var link in _session.Tasks.LinksOf(_existing.Id, _me.Id))
+        {
+            var stored = link.OtherIsFirst
+                ? new TaskLink(link.Other.Id, _existing.Id, link.Kind)
+                : new TaskLink(_existing.Id, link.Other.Id, link.Kind);
+            Links.Add(new LinkRowViewModel(link.Label, link.Other.Title, () =>
+            {
+                _session.Tasks.RemoveLink(stored);
+                _changedAlready = true;
+                LoadLinks();
+            }));
+        }
+    }
+
+    private void LoadComments()
+    {
+        Comments.Clear();
+        if (_existing is null)
+        {
+            return;
+        }
+
+        foreach (var comment in _session.Tasks.CommentsOf(_existing.Id, _me.Id))
+        {
+            var author = _household.Members.FirstOrDefault(member => member.Id == comment.AuthorId)?.DisplayName ?? "Someone";
+            var when = _session.Local(comment.CreatedAt).ToString("ddd d MMM, HH:mm", System.Globalization.CultureInfo.CurrentCulture);
+            Comments.Add(new CommentRowViewModel($"{author} · {when}", comment.Text));
+        }
+    }
+
+
 
     [ObservableProperty]
     public partial TaskPriority Priority { get; set; }
@@ -158,6 +297,7 @@ public partial class TaskEditorViewModel : ViewModelBase
                 DueTime = DueDate is not null && DueTime is { } time ? TimeOnly.FromTimeSpan(time) : null,
                 RemindMinutesBefore = DueDate is not null && DueTime is not null ? RemindBefore.Minutes : null,
                 Alarm = DueDate is not null && DueTime is not null && IsAlarm,
+                ParentId = CanBeStep ? Parent.TaskId : _existing?.ParentId,
                 Priority = Priority,
                 Tier = IsShared ? PrivacyTier.Household : PrivacyTier.Private,
                 Recurrence = Repeat.Frequency is { } frequency
@@ -187,7 +327,7 @@ public partial class TaskEditorViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private void Cancel() => _close(false);
+    private void Cancel() => _close(_changedAlready);
 }
 
 public sealed record RepeatOption(string Label, RecurrenceFrequency? Frequency)
@@ -199,6 +339,26 @@ public sealed record AssigneeOption(string Label, Guid? ProfileId)
 {
     public override string ToString() => Label;
 }
+
+public sealed record ParentOption(string Label, Guid? TaskId)
+{
+    public override string ToString() => Label;
+}
+
+public sealed record LinkKindOption(string Label, TaskLinkKind Kind, bool ThisFirst)
+{
+    public override string ToString() => Label;
+}
+
+/// <summary>One link in the editor, like "Blocked by · Install the SDK", with a way to remove it.</summary>
+public sealed class LinkRowViewModel(string label, string title, Action remove)
+{
+    public string Text { get; } = $"{label} · {title}";
+
+    public IRelayCommand RemoveCommand { get; } = new RelayCommand(remove);
+}
+
+public sealed record CommentRowViewModel(string Byline, string Text);
 
 public sealed record MinutesOption(string Label, int? Minutes)
 {

@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using EtchaSketch.Core.Profiles;
 using EtchaSketch.Data.Storage;
@@ -54,12 +55,21 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
         _lastActivity = _session.Now;
         CurrentPage = StartPage();
+        ReminderActions.Requested += OnReminderActionRequested;
     }
 
     [ObservableProperty]
     public partial ViewModelBase CurrentPage { get; private set; }
 
-    public void Dispose() => _session?.Dispose();
+    public void Dispose()
+    {
+        ReminderActions.Requested -= OnReminderActionRequested;
+        _session?.Dispose();
+    }
+
+    // "Done" pressed on a phone notification. A locked or unchosen profile waits: its home screen
+    // takes the request when it opens.
+    private void OnReminderActionRequested() => Dispatcher.UIThread.Post(() => (CurrentPage as HomeViewModel)?.CompleteRequestedTasks());
 
     /// <summary>Someone touched or typed in the app. The views report this so idle time can be measured.</summary>
     public void NoteActivity()
@@ -92,6 +102,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
         _awaySince = null;
         NoteActivity();
+        (CurrentPage as HomeViewModel)?.CompleteRequestedTasks();
     }
 
     /// <summary>Shows the lock screen if the open profile has a PIN. Does nothing otherwise.</summary>

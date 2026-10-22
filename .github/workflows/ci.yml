@@ -98,3 +98,18 @@ jobs:
           for i in $(seq 1 30); do curl -sf localhost:5080/health && break; sleep 1; done
           curl -sf localhost:5080/health
           docker exec sync test -f /data/sync.db
+
+  assistant-container:
+    name: Assistant container
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f src/EtchaSketch.Assistant/Dockerfile -t etchasketch-assistant .
+      - name: Check it starts, makes a caller, and refuses requests without a token
+        run: |
+          docker run -d --name assistant -p 5090:8080 -e Assistant__SyncServer=http://127.0.0.1:9 etchasketch-assistant
+          for i in $(seq 1 30); do curl -sf localhost:5090/health && break; sleep 1; done
+          curl -sf localhost:5090/health
+          test "$(curl -s -o /dev/null -w '%{http_code}' localhost:5090/v1/tasks)" = 401
+          docker exec assistant dotnet EtchaSketch.Assistant.dll add-caller ci | tail -1 | grep -Eq '^[0-9a-f]{48}$'

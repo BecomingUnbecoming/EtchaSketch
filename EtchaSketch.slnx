@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/EtchaSketch.Assistant/EtchaSketch.Assistant.csproj" />
     <Project Path="src/EtchaSketch.Core/EtchaSketch.Core.csproj" />
     <Project Path="src/EtchaSketch.Data/EtchaSketch.Data.csproj" />
     <Project Path="src/EtchaSketch.UI/EtchaSketch.UI.csproj" />

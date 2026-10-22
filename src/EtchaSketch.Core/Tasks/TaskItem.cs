@@ -66,6 +66,10 @@ public sealed record TaskItem : ITiered, IOwned
     [Tier(PrivacyTier.Household)]
     public Guid? AssigneeId { get; init; }
 
+    /// <summary>The task this one is a step of, or null for a top-level task. Subtasks go one level deep.</summary>
+    [Tier(PrivacyTier.Household)]
+    public Guid? ParentId { get; init; }
+
     [Tier(PrivacyTier.Household)]
     public Recurrence? Recurrence { get; init; }
 

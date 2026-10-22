@@ -8,4 +8,5 @@ public enum NotificationKind
     DueSoon,
     Overdue,
     AssignedToYou,
+    Expiring,
 }

@@ -18,7 +18,10 @@ namespace EtchaSketch.Android
             App.Environment = new AppEnvironment(
                 System.IO.Path.Combine(FilesDir!.AbsolutePath, "etchasketch.db"),
                 new AndroidKeyStore(this),
-                DeviceUnlock: new AndroidDeviceUnlock(this));
+                DeviceUnlock: new AndroidDeviceUnlock(this),
+                ReminderScheduler: new AndroidReminderScheduler(this),
+                // Parentheses keep "::" from being read as the start of a format inside the braces.
+                DeviceName: $"{(global::Android.OS.Build.Manufacturer)} {(global::Android.OS.Build.Model)}".Trim());
 
             return base.CustomizeAppBuilder(builder)
             .WithInterFont();

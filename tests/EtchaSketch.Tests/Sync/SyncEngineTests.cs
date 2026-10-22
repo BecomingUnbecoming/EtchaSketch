@@ -6,6 +6,7 @@ using EtchaSketch.Core.Tasks;
 using EtchaSketch.Data.Notifications;
 using EtchaSketch.Data.Profiles;
 using EtchaSketch.Data.Storage;
+using EtchaSketch.Core.Sync;
 using EtchaSketch.Data.Sync;
 using EtchaSketch.Data.Tasks;
 using EtchaSketch.Tests.TestSupport;
@@ -363,7 +364,10 @@ public sealed class SyncEngineTests : IAsyncLifetime
             Reminders = new Reminders(Tasks, Notifications);
             Sync = new SyncEngine(_db, server, Clock);
             Locks = new ProfileLocks(_db, iterations: 1_000);
+            Pantry = new Data.Pantry.PantryRepository(_db);
         }
+
+        public Data.Pantry.PantryRepository Pantry { get; }
 
         public ManualClock Clock { get; } = new(Wednesday);
 
@@ -382,7 +386,7 @@ public sealed class SyncEngineTests : IAsyncLifetime
         /// <summary>Whether any table on this device holds the text at all.</summary>
         public bool Contains(string text)
         {
-            foreach (var table in new[] { "households", "profiles", "tasks", "task_completions", "notifications", "quiet_hours" })
+            foreach (var table in new[] { "households", "profiles", "tasks", "task_completions", "notifications", "quiet_hours", "task_links", "task_comments" })
             {
                 using var command = _db.CreateCommand();
                 command.CommandText = $"SELECT * FROM {table}";
@@ -434,5 +438,128 @@ public sealed class SyncEngineTests : IAsyncLifetime
         Assert.Equal(new TimeOnly(14, 5), task.DueTime);
         Assert.Equal(30, task.RemindMinutesBefore);
         Assert.True(task.Alarm);
+    }
+
+    [Fact]
+    public async Task Subtasks_links_and_comments_reach_who_may_see_them_and_no_one_else()
+    {
+        var move = Add(_desktop, "Move house", PrivacyTier.Household);
+        var van = _desktop.Tasks.Add(new TaskItem
+        {
+            HouseholdId = _home.Id, OwnerId = _robin.Id, Title = "Book van", Tier = PrivacyTier.Household, ParentId = move.Id,
+        });
+        var surprise = Add(_desktop, "Surprise for Kai");
+        _desktop.Tasks.AddLink(new TaskLink(van.Id, move.Id, TaskLinkKind.Blocks), Wednesday);
+        _desktop.Tasks.AddLink(new TaskLink(surprise.Id, move.Id, TaskLinkKind.Related), Wednesday);
+        _desktop.Tasks.AddComment(move.Id, _robin.Id, "Saturday works", Wednesday);
+        _desktop.Tasks.AddComment(surprise.Id, _robin.Id, "the bakery on 5th", Wednesday);
+        await _desktop.Sync.SyncAsync();
+
+        var kaisPhone = await JoinAs(_kai, "kai-phone");
+        var robinsPhone = await JoinAs(_robin, "robin-phone");
+
+        Assert.Equal(move.Id, kaisPhone.Tasks.Get(van.Id)!.ParentId);
+        Assert.Equal([("Blocked by", "Book van")], kaisPhone.Tasks.LinksOf(move.Id, _kai.Id).Select(link => (link.Label, link.Other.Title)));
+        Assert.Equal("Saturday works", Assert.Single(kaisPhone.Tasks.CommentsOf(move.Id, _kai.Id)).Text);
+        Assert.False(kaisPhone.Contains("the bakery on 5th"));
+        Assert.False(kaisPhone.Contains(surprise.Id.ToString()));
+
+        Assert.Equal(2, robinsPhone.Tasks.LinksOf(move.Id, _robin.Id).Count);
+        Assert.Equal("the bakery on 5th", Assert.Single(robinsPhone.Tasks.CommentsOf(surprise.Id, _robin.Id)).Text);
+    }
+
+    [Fact]
+    public async Task Each_device_appears_in_the_households_device_list()
+    {
+        await _desktop.Sync.SyncAsync();
+        var phone = await JoinAs(_kai, "kai-phone");
+        await _desktop.Sync.SyncAsync();
+
+        var devices = _desktop.Sync.Devices(_home.Id);
+        Assert.Equal(2, devices.Count);
+        Assert.Single(devices, device => device.IsThisDevice && device.ProfileId == _robin.Id);
+        Assert.Single(devices, device => !device.IsThisDevice && device.ProfileId == _kai.Id && device.RemovedAt is null);
+        Assert.Equal(2, phone.Sync.Devices(_home.Id).Count);
+    }
+
+    [Fact]
+    public async Task A_removed_device_is_cut_off_and_everyone_else_keeps_syncing()
+    {
+        await _desktop.Sync.SyncAsync();
+        var lostPhone = await JoinAs(_robin, "robin-phone");
+        var kaisPhone = await JoinAs(_kai, "kai-phone");
+        Add(_desktop, "Before", PrivacyTier.Household);
+        await _desktop.Sync.SyncAsync();
+        await lostPhone.Sync.SyncAsync();
+        await kaisPhone.Sync.SyncAsync();
+
+        var removal = await _desktop.Sync.RemoveDeviceAsync(lostPhone.Sync.ThisDeviceId);
+
+        Assert.Equal(new DeviceRemoval(StreamsCut: 2, StreamsNotHeld: 0), removal);
+        Add(_desktop, "After", PrivacyTier.Household);
+        Add(_desktop, "Private after", owner: _robin);
+        await _desktop.Sync.SyncAsync();
+        await kaisPhone.Sync.SyncAsync();
+
+        await Assert.ThrowsAsync<SyncAccessDeniedException>(() => lostPhone.Sync.SyncAsync());
+        Assert.Contains("Before", TitlesFor(lostPhone, _robin));
+        Assert.DoesNotContain("After", TitlesFor(lostPhone, _robin));
+        Assert.Contains("After", TitlesFor(kaisPhone, _kai));
+        Assert.NotNull(kaisPhone.Sync.Devices(_home.Id).Single(device => device.Id == lostPhone.Sync.ThisDeviceId).RemovedAt);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _desktop.Sync.RemoveDeviceAsync(_desktop.Sync.ThisDeviceId));
+    }
+
+    [Fact]
+    public async Task After_a_removal_new_devices_still_join_and_a_recovery_key_still_works()
+    {
+        var recoveryKey = _desktop.Sync.CreateRecoveryKey("a long passphrase", iterations: 1_000);
+        await _desktop.Sync.SyncAsync();
+        var lostPhone = await JoinAs(_robin, "robin-phone");
+        await _desktop.Sync.RemoveDeviceAsync(lostPhone.Sync.ThisDeviceId);
+        Add(_desktop, "After", PrivacyTier.Household);
+        await _desktop.Sync.SyncAsync();
+
+        var newPhone = await JoinAs(_robin, "new-phone");
+        var restored = NewDevice("restored-pc");
+        await restored.Sync.RestoreAsync(recoveryKey, "a long passphrase");
+
+        Assert.Contains("After", TitlesFor(newPhone, _robin));
+        Assert.Contains("After", TitlesFor(restored, _robin));
+        Add(newPhone, "From the new phone", PrivacyTier.Household);
+        await newPhone.Sync.SyncAsync();
+        await _desktop.Sync.SyncAsync();
+        Assert.Contains("From the new phone", TitlesFor(_desktop, _robin));
+    }
+
+    [Fact]
+    public async Task Syncing_keeps_working_after_a_recovery_key_is_registered()
+    {
+        _desktop.Sync.CreateRecoveryKey("a long passphrase", iterations: 1_000);
+        // Every stream has something in it, so the key's token gets registered everywhere.
+        Add(_desktop, "Mine");
+        Add(_desktop, "Kai's", owner: _kai);
+        Add(_desktop, "Ours", PrivacyTier.Household);
+        await _desktop.Sync.SyncAsync();
+        await _desktop.Sync.SyncAsync();
+
+        Add(_desktop, "Later", PrivacyTier.Household);
+        Assert.Equal(1, (await _desktop.Sync.SyncAsync()).Sent);
+    }
+
+    [Fact]
+    public async Task A_shopping_line_ticked_on_one_phone_is_ticked_on_the_other_and_stock_follows()
+    {
+        var milk = _desktop.Pantry.AddStock(new Core.Pantry.StockItem { HouseholdId = _home.Id, Name = "Milk", Amount = 0, LowAt = 1 });
+        _desktop.Pantry.AddLowToList(_home.Id);
+        await _desktop.Sync.SyncAsync();
+        var robinsPhone = await JoinAs(_robin, "robin-phone");
+        var kaisPhone = await JoinAs(_kai, "kai-phone");
+
+        robinsPhone.Pantry.Tick(Assert.Single(robinsPhone.Pantry.ShoppingList(_home.Id)).Id, Wednesday);
+        await robinsPhone.Sync.SyncAsync();
+        await kaisPhone.Sync.SyncAsync();
+
+        Assert.NotNull(Assert.Single(kaisPhone.Pantry.ShoppingList(_home.Id)).BoughtAt);
+        Assert.Equal(1, kaisPhone.Pantry.GetStock(milk.Id)!.Amount);
     }
 }

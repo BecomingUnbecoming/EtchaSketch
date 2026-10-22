@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using EtchaSketch.Core.Sync;
+using EtchaSketch.Data.Sync;
 using EtchaSketch.Server;
 
 namespace EtchaSketch.Tests.Sync;
@@ -241,5 +242,49 @@ public sealed class SyncServerTests : IAsyncLifetime
         public DateTimeOffset Now { get; set; } = now;
 
         public override DateTimeOffset GetUtcNow() => Now;
+    }
+
+    [Fact]
+    public async Task Once_a_device_is_removed_only_registered_devices_get_in()
+    {
+        var client = _server.Client();
+        await client.PushAsync(Stream, Token, [[1]]);
+        Assert.True(await client.SupportsDevicesAsync());
+        Assert.Equal(DeviceOutcome.Done, await client.RegisterDeviceAsync(Stream, Token, "desktop-0001", "desktop-token-000001"));
+        Assert.Equal(DeviceOutcome.Done, await client.RegisterDeviceAsync(Stream, Token, "lost-phone-01", "phone-token-0000001"));
+
+        Assert.Equal(DeviceOutcome.Done, await client.RemoveDeviceAsync(Stream, "desktop-token-000001", "lost-phone-01"));
+
+        await Assert.ThrowsAsync<SyncAccessDeniedException>(() => client.PullAsync(Stream, "phone-token-0000001", after: 0));
+        await Assert.ThrowsAsync<SyncAccessDeniedException>(() => client.PullAsync(Stream, Token, after: 0));
+        Assert.Equal(DeviceOutcome.Denied, await client.RegisterDeviceAsync(Stream, Token, "lost-phone-01", "phone-token-0000002"));
+        Assert.Single((await client.PullAsync(Stream, "desktop-token-000001", after: 0)).Changes);
+    }
+
+    [Fact]
+    public async Task A_one_time_pass_lets_one_new_device_in_once()
+    {
+        var client = _server.Client();
+        await client.PushAsync(Stream, Token, [[1]]);
+        await client.RegisterDeviceAsync(Stream, Token, "desktop-0001", "desktop-token-000001");
+        await client.RegisterDeviceAsync(Stream, Token, "old-phone-001", "old-phone-token-0001");
+        await client.RemoveDeviceAsync(Stream, "desktop-token-000001", "old-phone-001");
+
+        Assert.Equal(DeviceOutcome.Done, await client.AddEnrolmentAsync(Stream, "desktop-token-000001", "a-one-time-pass-0001"));
+        Assert.Equal(DeviceOutcome.Done, await client.RegisterDeviceAsync(Stream, "a-one-time-pass-0001", "new-phone-001", "new-phone-token-0001"));
+        Assert.Equal(DeviceOutcome.Denied, await client.RegisterDeviceAsync(Stream, "a-one-time-pass-0001", "sneaky-00001", "sneaky-token-000001"));
+        Assert.Equal(DeviceOutcome.Denied, await client.AddEnrolmentAsync(Stream, "old-phone-token-0001", "another-pass-00001"));
+        Assert.Single((await client.PullAsync(Stream, "new-phone-token-0001", after: 0)).Changes);
+    }
+
+    [Fact]
+    public async Task The_last_device_on_a_stream_cant_be_removed()
+    {
+        var client = _server.Client();
+        await client.PushAsync(Stream, Token, [[1]]);
+        await client.RegisterDeviceAsync(Stream, Token, "only-device-1", "only-device-token-01");
+
+        Assert.Equal(DeviceOutcome.LastDevice, await client.RemoveDeviceAsync(Stream, "only-device-token-01", "only-device-1"));
+        Assert.Single((await client.PullAsync(Stream, Token, after: 0)).Changes);
     }
 }

@@ -2,7 +2,9 @@ using System.Globalization;
 using EtchaSketch.Core.Tasks;
 using EtchaSketch.Data.Storage;
 using EtchaSketch.Tests.TestSupport;
+using EtchaSketch.Data.Notifications;
 using EtchaSketch.UI;
+using EtchaSketch.UI.Services;
 using EtchaSketch.UI.ViewModels;
 
 namespace EtchaSketch.Tests.Screens;
@@ -27,10 +29,10 @@ public sealed class ScreenTests : IDisposable
         Directory.Delete(_directory, recursive: true);
     }
 
-    private MainViewModel Launch()
+    private MainViewModel Launch(IReminderScheduler? scheduler = null)
     {
         var app = new MainViewModel(new AppEnvironment(Path.Combine(_directory, "data", "etchasketch.db"), _keys,
-            new FixedClock(new DateTimeOffset(2026, 10, 21, 9, 0, 0, TimeSpan.Zero))));
+            new FixedClock(new DateTimeOffset(2026, 10, 21, 9, 0, 0, TimeSpan.Zero)), ReminderScheduler: scheduler));
         _apps.Add(app);
         return app;
     }
@@ -428,5 +430,237 @@ public sealed class ScreenTests : IDisposable
 
         Assert.Empty(feed.Items);
         Assert.Equal("Snoozed until 09:10: Take medicine is due now", feed.SnoozedText);
+    }
+
+    private sealed class FakeAlarmClock : IReminderScheduler
+    {
+        public IReadOnlyList<PlannedReminder> Scheduled { get; private set; } = [];
+
+        public void Replace(IReadOnlyList<PlannedReminder> reminders) => Scheduled = reminders;
+    }
+
+    [Fact]
+    public void The_phones_alarm_clock_gets_the_current_persons_upcoming_reminders_only()
+    {
+        var alarms = new FakeAlarmClock();
+        var home = SetUp(Launch(alarms));
+        AddTask(home, "Vet", editor =>
+        {
+            editor.DueDate = new DateTime(2026, 10, 21);
+            editor.DueTime = new TimeSpan(15, 0, 0);
+            editor.IsAlarm = true;
+        });
+        AddTask(home, "Kai's dishes", editor =>
+        {
+            editor.IsShared = true;
+            editor.DueDate = new DateTime(2026, 10, 21);
+            editor.DueTime = new TimeSpan(16, 0, 0);
+            editor.Assignee = editor.AssigneeOptions.Single(option => option.Label == "Kai");
+        });
+
+        var vet = Assert.Single(alarms.Scheduled, reminder => reminder.Kind == Core.Notifications.NotificationKind.DueNow);
+        Assert.Equal("Vet is due now", vet.Title);
+        Assert.True(vet.Alarm);
+        Assert.DoesNotContain(alarms.Scheduled, reminder => reminder.Title.Contains("dishes", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Done_on_a_phone_notification_completes_the_task_once_someone_is_signed_in()
+    {
+        var home = SetUp(Launch());
+        AddTask(home, "Take medicine");
+        var taskId = home.MyTasks.Single().Id;
+
+        ReminderActions.RequestComplete(Guid.NewGuid());
+        ReminderActions.RequestComplete(taskId);
+        home.CompleteRequestedTasks();
+
+        Assert.Empty(home.MyTasks);
+        Assert.Empty(ReminderActions.TakeCompletions());
+    }
+
+    [Fact]
+    public void Export_builds_each_kind_of_file_with_a_dated_name()
+    {
+        var home = SetUp(Launch());
+        AddTask(home, "Vet", editor => editor.DueDate = new DateTime(2026, 10, 30));
+
+        home.OpenExportCommand.Execute(null);
+        var export = home.Export!;
+
+        Assert.Equal("etchasketch-robin-2026-10-21.json", export.FileName(ExportKind.Everything));
+        Assert.Contains("\"title\": \"Vet\"", export.Build(ExportKind.Everything), StringComparison.Ordinal);
+        Assert.StartsWith("Title,Done,Due", export.Build(ExportKind.Spreadsheet), StringComparison.Ordinal);
+        Assert.Contains("SUMMARY:Vet", export.Build(ExportKind.Calendar), StringComparison.Ordinal);
+
+        export.CloseCommand.Execute(null);
+        Assert.False(home.IsShowingExport);
+    }
+
+    [Fact]
+    public void A_step_shows_under_its_task_and_the_task_counts_its_steps()
+    {
+        var home = SetUp(Launch());
+        AddTask(home, "Move house");
+        AddTask(home, "Another task");
+        AddTask(home, "Book van", editor => editor.Parent = editor.ParentOptions.Single(option => option.Label == "Move house"));
+
+        Assert.Equal(["Move house", "Book van", "Another task"], home.MyTasks.Select(row => row.Title));
+        Assert.True(home.MyTasks[1].IsStep);
+        Assert.Contains("1 step to do", home.MyTasks[0].Details, StringComparison.Ordinal);
+
+        home.MyTasks[0].EditCommand.Execute(null);
+        Assert.False(home.Editor!.CanBeStep);
+    }
+
+    [Fact]
+    public void A_task_waiting_on_another_asks_before_it_is_marked_done()
+    {
+        var home = SetUp(Launch());
+        AddTask(home, "Install the SDK");
+        AddTask(home, "Build the APK");
+
+        home.MyTasks.Single(row => row.Title == "Build the APK").EditCommand.Execute(null);
+        var editor = home.Editor!;
+        editor.NewLinkKind = editor.LinkKinds.Single(kind => kind.Label == "Is blocked by");
+        editor.NewLinkTarget = editor.LinkTargets.Single(target => target.Label == "Install the SDK");
+        editor.AddLinkCommand.Execute(null);
+        Assert.Equal(["Blocked by · Install the SDK"], editor.Links.Select(link => link.Text));
+        editor.CancelCommand.Execute(null);
+
+        var apk = home.MyTasks.Single(row => row.Title == "Build the APK");
+        Assert.Equal("Waiting on Install the SDK", apk.WaitingText);
+        apk.CompleteCommand.Execute(null);
+        Assert.Equal("Build the APK is waiting on Install the SDK. Mark it done anyway?", home.BlockedQuestion);
+        Assert.Equal(2, home.MyTasks.Count);
+
+        home.CompleteAnywayCommand.Execute(null);
+        Assert.Equal(["Install the SDK"], home.MyTasks.Select(row => row.Title));
+        Assert.False(home.IsAskingAboutBlocked);
+    }
+
+    [Fact]
+    public void Comments_are_added_from_the_editor()
+    {
+        var home = SetUp(Launch());
+        AddTask(home, "Dishes", editor => editor.IsShared = true);
+
+        home.MyTasks.Single().EditCommand.Execute(null);
+        home.Editor!.NewComment = "I'll do them tonight";
+        home.Editor.AddCommentCommand.Execute(null);
+
+        var comment = Assert.Single(home.Editor.Comments);
+        Assert.Equal("I'll do them tonight", comment.Text);
+        Assert.StartsWith("Robin · ", comment.Byline, StringComparison.Ordinal);
+        Assert.Null(home.Editor.NewComment);
+    }
+
+    [Fact]
+    public void Link_lines_from_an_earlier_import_can_be_turned_into_links_from_the_import_panel()
+    {
+        var home = SetUp(Launch());
+        AddTask(home, "Install the SDK");
+        AddTask(home, "Build the APK", editor => editor.Notes = "Blocked by: Install the SDK");
+
+        home.OpenImportCommand.Execute(null);
+        home.Import!.ConvertLinkLinesCommand.Execute(null);
+
+        Assert.Equal("Made 1 link.", home.Import.LinkLinesResult);
+        Assert.Equal("Waiting on Install the SDK", home.MyTasks.Single(row => row.Title == "Build the APK").WaitingText);
+    }
+
+    [Fact]
+    public void Stock_can_be_added_used_edited_and_sent_to_the_shopping_list()
+    {
+        var home = SetUp(Launch());
+        var pantry = home.Pantry;
+        pantry.Name = "Milk";
+        pantry.Amount = 2;
+        pantry.Unit = "bottles";
+        pantry.Location = "Fridge";
+        pantry.BestBefore = new DateTime(2026, 10, 23);
+        pantry.LowAt = 1;
+        pantry.SaveCommand.Execute(null);
+
+        var milk = Assert.Single(pantry.Items);
+        Assert.Equal(("Milk", "2 bottles"), (milk.Name, milk.AmountText));
+        Assert.Equal("Fridge · goes off Fri 23 Oct", milk.Details);
+        Assert.True(milk.IsExpiring);
+
+        milk.UseCommand.Execute(null);
+        Assert.Equal("1 bottles", pantry.Items.Single().AmountText);
+        Assert.Contains("running low", pantry.Items.Single().Details, StringComparison.Ordinal);
+
+        pantry.AddLowToListCommand.Execute(null);
+        Assert.Equal("Added 1 thing to the shopping list.", pantry.Message);
+        Assert.Equal(["Milk"], home.Shopping.Lines.Select(line => line.Name));
+
+        pantry.Items.Single().EditCommand.Execute(null);
+        Assert.True(pantry.IsEditing);
+        pantry.Name = "Oat milk";
+        pantry.SaveCommand.Execute(null);
+        Assert.Equal("Oat milk", pantry.Items.Single().Name);
+        Assert.False(pantry.IsEditing);
+    }
+
+    [Fact]
+    public void The_shopping_list_ticks_things_off_and_puts_stock_back()
+    {
+        var home = SetUp(Launch());
+        home.Pantry.Name = "Rice";
+        home.Pantry.Amount = 0;
+        home.Pantry.SaveCommand.Execute(null);
+        home.Pantry.Items.Single().AddToListCommand.Execute(null);
+        home.Shopping.NewLine = "Bread";
+        home.Shopping.AddCommand.Execute(null);
+
+        Assert.Equal(["Rice", "Bread"], home.Shopping.Lines.Select(line => line.Name));
+        home.Shopping.Lines.Single(line => line.Name == "Rice").ToggleCommand.Execute(null);
+
+        Assert.True(home.Shopping.Lines.Single(line => line.Name == "Rice").IsBought);
+        Assert.Equal("1", home.Pantry.Items.Single().AmountText);
+        home.Shopping.ClearBoughtCommand.Execute(null);
+        Assert.Equal(["Bread"], home.Shopping.Lines.Select(line => line.Name));
+    }
+
+    [Fact]
+    public void Something_about_to_go_off_shows_in_the_notifications()
+    {
+        var home = SetUp(Launch());
+        home.Pantry.Name = "Yoghurt";
+        home.Pantry.BestBefore = new DateTime(2026, 10, 22);
+        home.Pantry.SaveCommand.Execute(null);
+
+        home.OpenNotificationsCommand.Execute(null);
+
+        Assert.Contains(home.Notifications!.Items, row => row.Title == "Yoghurt goes off tomorrow");
+    }
+
+    [Fact]
+    public void A_recipe_is_added_planned_and_cooked_from_the_meals_tab()
+    {
+        var home = SetUp(Launch());
+        home.Pantry.Name = "Rice";
+        home.Pantry.Amount = 1000;
+        home.Pantry.Unit = "g";
+        home.Pantry.SaveCommand.Execute(null);
+
+        var meals = home.Meals;
+        meals.RecipeName = "Fried rice";
+        meals.RecipeServings = 2;
+        meals.RecipeIngredients = "300 g rice\n2 eggs\nsoy sauce";
+        meals.SaveRecipeCommand.Execute(null);
+        Assert.Equal(("Fried rice", "2 servings · 3 ingredients"), (meals.Recipes.Single().Name, meals.Recipes.Single().Summary));
+
+        meals.PlanRecipe = meals.RecipeChoices.Single(choice => choice.Label == "Fried rice");
+        meals.PlanCommand.Execute(null);
+        Assert.Equal("Fried rice is planned. Added to the shopping list: eggs, soy sauce.", meals.Message);
+        Assert.Equal(["eggs", "soy sauce"], home.Shopping.Lines.Select(line => line.Name));
+
+        var today = meals.Week[0];
+        Assert.Equal(("Today", "Dinner: Fried rice"), (today.Day, today.Meals.Single().Text));
+        today.Meals.Single().CookCommand.Execute(null);
+        Assert.True(home.Meals.Week[0].Meals.Single().IsCooked);
+        Assert.Equal("700 g", home.Pantry.Items.Single().AmountText);
     }
 }

@@ -44,6 +44,14 @@
                                IsVisible="{Binding Problems, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
                     <Button Content="Import" Command="{Binding ImportCommand}" Classes="accent" />
+
+                    <Separator />
+                    <TextBlock Text="Imported before links existed?" FontWeight="SemiBold" />
+                    <TextBlock TextWrapping="Wrap" FontSize="12" Opacity="0.8"
+                               Text="Earlier imports wrote links into notes, as lines like &quot;Blocked by: Install the SDK&quot;. This makes them real links and steps, and removes those lines." />
+                    <Button Content="Turn link lines into links" Command="{Binding ConvertLinkLinesCommand}" />
+                    <TextBlock Text="{Binding LinkLinesResult}" TextWrapping="Wrap"
+                               IsVisible="{Binding LinkLinesResult, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                 </StackPanel>
             </StackPanel>
         </ScrollViewer>

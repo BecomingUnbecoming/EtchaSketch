@@ -49,6 +49,20 @@ public static partial class SyncApi
                 : Results.StatusCode(StatusCodes.Status403Forbidden);
         }).RequireRateLimiting(SyncRateLimits.General);
 
+        app.MapGet("/v1/features", () => new ServerFeatures(Devices: true));
+
+        app.MapPut("/v1/streams/{streamId}/devices/{deviceId}", (string streamId, string deviceId, TokenRequest body, HttpRequest request, SyncStore store) =>
+            DeviceResponse(streamId, deviceId, request, body.Token, token => store.RegisterDevice(streamId, token, deviceId, body.Token)))
+            .RequireRateLimiting(SyncRateLimits.General);
+
+        app.MapPost("/v1/streams/{streamId}/enrolments", (string streamId, TokenRequest body, HttpRequest request, SyncStore store) =>
+            DeviceResponse(streamId, "enrolment", request, body.Token, token => store.AddEnrolment(streamId, token, body.Token)))
+            .RequireRateLimiting(SyncRateLimits.General);
+
+        app.MapDelete("/v1/streams/{streamId}/devices/{deviceId}", (string streamId, string deviceId, HttpRequest request, SyncStore store) =>
+            DeviceResponse(streamId, deviceId, request, newToken: null, token => store.RemoveDevice(streamId, token, deviceId)))
+            .RequireRateLimiting(SyncRateLimits.General);
+
         app.MapPut("/v1/pairings/{pairingId}", (string pairingId, PairingRequest body, HttpRequest request, HttpResponse response, SyncStore store, SyncAccess access) =>
         {
             if (!PairingId().IsMatch(pairingId))
@@ -96,6 +110,32 @@ public static partial class SyncApi
             ? header["Bearer ".Length..]
             : null;
     }
+
+    // newToken is the token being registered or left as a pass, checked for a sensible length; null when removing.
+    private static IResult DeviceResponse(string streamId, string deviceId, HttpRequest request, string? newToken, Func<string, DeviceResult> act)
+    {
+        if (!StreamId().IsMatch(streamId) || !DeviceId().IsMatch(deviceId) || newToken is { Length: < 16 or > 128 })
+        {
+            return Results.BadRequest();
+        }
+
+        if (BearerToken(request) is not { } token)
+        {
+            return Results.Unauthorized();
+        }
+
+        return act(token) switch
+        {
+            DeviceResult.Done => Results.NoContent(),
+            DeviceResult.UnknownStream => Results.NotFound(),
+            DeviceResult.LastDevice => Results.Conflict(),
+            DeviceResult.Full => Results.StatusCode(StatusCodes.Status507InsufficientStorage),
+            _ => Results.StatusCode(StatusCodes.Status403Forbidden),
+        };
+    }
+
+    [GeneratedRegex("^[A-Za-z0-9_-]{8,64}$")]
+    private static partial Regex DeviceId();
 
     [GeneratedRegex("^[A-Za-z0-9_-]{16,64}$")]
     private static partial Regex StreamId();

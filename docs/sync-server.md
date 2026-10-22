@@ -83,6 +83,29 @@ If you put a reverse proxy in front, every request comes from the proxy's addres
 per-address limits apply to all your devices together. Raise `Sync__RequestsPerMinute` if sync
 slows down.
 
+## Removing a lost device
+
+Each device has its own token with the server for every stream it holds (made automatically the first
+time it syncs with a server that supports this). In the app, **Sync → Devices** lists every device that
+has synced; **Remove** cuts one off:
+
+- The server deletes that device's token for the household's stream and for the private stream of whoever
+  used it, and from then on accepts only registered devices' own tokens there. The removed device can't get
+  back in with the shared stream token either.
+- The removed device keeps what it had already downloaded, protected by its PIN. Removing it doesn't
+  change any keys.
+- A private stream that the device removing it doesn't hold (someone else's) has to be cut from one of
+  that person's devices. The app says so.
+- **Before the first removal, update every device you still use.** A device on an older version never
+  registered its own token, so it would be cut off too.
+- **Make a new recovery key afterwards.** A key made by this version carries its own token, so it keeps
+  working after a removal; an older key only works until the first removal.
+- New devices still join with a pairing code: the inviting device leaves a one-time pass for each stream,
+  valid for 15 minutes, inside the sealed code.
+
+This needs the server from the same release. An older server keeps working with newer apps, but **Remove**
+says the server has to be updated first.
+
 ## Away from home
 
 You don't need to open any ports on your router. There are two ways to sync while you're out:

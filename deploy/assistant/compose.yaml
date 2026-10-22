@@ -1,0 +1,33 @@
+# Runs the EtchaSketch household assistant. See docs/assistant.md. From this folder:
+#   docker compose run --rm etchasketch-assistant join <assistant code from the app>
+#   docker compose run --rm etchasketch-assistant add-caller home-assistant
+#   docker compose up -d --build
+services:
+  etchasketch-assistant:
+    build:
+      context: ../..
+      dockerfile: src/EtchaSketch.Assistant/Dockerfile
+    image: etchasketch-assistant
+    restart: unless-stopped
+    ports:
+      # Home network only; there's no reason for anything outside to reach it.
+      - "5090:8080"
+    volumes:
+      - assistant-data:/data
+      - assistant-keys:/keys
+    environment:
+      # Set these in a file named .env next to this one (see .env.example).
+      Assistant__SyncServer: "${ASSISTANT_SYNC_SERVER}"
+      Assistant__ActAs: "${ASSISTANT_ACT_AS:-}"
+      Assistant__JoinToken: "${SYNC_JOIN_TOKEN:-}"
+    mem_limit: 256m
+    pids_limit: 100
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+volumes:
+  assistant-data:
+  assistant-keys:

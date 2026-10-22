@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -29,7 +30,11 @@ public partial class HomeViewModel : ViewModelBase
         _switchPerson = switchPerson;
         _lock = lockNow;
         CanLock = session.Locks.HasPin(me.Id);
+        Pantry = new PantryViewModel(session, household, Refresh);
+        Shopping = new ShoppingViewModel(session, household, Refresh);
+        Meals = new MealsViewModel(session, household, Refresh);
         Refresh();
+        CompleteRequestedTasks();
     }
 
     public string Greeting => $"Hi, {_me.DisplayName}";
@@ -55,6 +60,15 @@ public partial class HomeViewModel : ViewModelBase
     public partial string FilterText { get; set; } = "";
 
     partial void OnFilterTextChanged(string value) => Refresh();
+
+    /// <summary>The household's stock.</summary>
+    public PantryViewModel Pantry { get; }
+
+    /// <summary>The household's shopping list.</summary>
+    public ShoppingViewModel Shopping { get; }
+
+    /// <summary>The week's meals and the household's recipes.</summary>
+    public MealsViewModel Meals { get; }
 
     /// <summary>Your own tasks plus everyone's shared chores.</summary>
     public ObservableCollection<TaskRowViewModel> MyTasks { get; } = [];
@@ -88,6 +102,44 @@ public partial class HomeViewModel : ViewModelBase
     public partial ImportViewModel? Import { get; private set; }
 
     public bool IsShowingImport => Import is not null;
+
+    /// <summary>The export panel, or null when it is closed.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsShowingExport))]
+    public partial ExportViewModel? Export { get; private set; }
+
+    public bool IsShowingExport => Export is not null;
+
+    private Guid? _blockedTaskId;
+
+    // How many open steps each task has, counted once per refresh.
+    private Dictionary<Guid, int> _openSteps = [];
+
+    /// <summary>"Build the APK is waiting on Install the SDK. Mark it done anyway?", or null.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAskingAboutBlocked))]
+    public partial string? BlockedQuestion { get; private set; }
+
+    public bool IsAskingAboutBlocked => BlockedQuestion is not null;
+
+    [RelayCommand]
+    private void CompleteAnyway()
+    {
+        if (_blockedTaskId is { } taskId)
+        {
+            _session.Tasks.Complete(taskId, _me.Id, _session.Now, evenIfBlocked: true);
+        }
+
+        DismissBlocked();
+        Refresh();
+    }
+
+    [RelayCommand]
+    private void DismissBlocked()
+    {
+        _blockedTaskId = null;
+        BlockedQuestion = null;
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(NotificationsLabel))]
@@ -135,7 +187,38 @@ public partial class HomeViewModel : ViewModelBase
         }
 
         _session.Reminders.Check(_household, _session.Now);
+        _session.PantryAlerts.Check(_household, _session.Now);
+        _session.ScheduleReminders(_household, _me);
         UpdateUnreadCount();
+    }
+
+    /// <summary>
+    /// Completes tasks whose reminder had "Done" pressed outside the app. A task this person can't
+    /// see, or one already finished, is skipped.
+    /// </summary>
+    public void CompleteRequestedTasks()
+    {
+        var done = false;
+        foreach (var taskId in ReminderActions.TakeCompletions())
+        {
+            if (_session.Tasks.VisibleTo(_me.Id).Any(task => task.Id == taskId))
+            {
+                try
+                {
+                    _session.Tasks.Complete(taskId, _me.Id, _session.Now);
+                    done = true;
+                }
+                catch (Core.Tasks.TaskBlockedException)
+                {
+                    // Still waiting on another task; it stays on the list, where "done anyway" is offered.
+                }
+            }
+        }
+
+        if (done)
+        {
+            Refresh();
+        }
     }
 
     [RelayCommand]
@@ -147,6 +230,9 @@ public partial class HomeViewModel : ViewModelBase
             Refresh();
         }
     }, imported: Refresh);
+
+    [RelayCommand]
+    private void OpenExport() => Export = new ExportViewModel(_session, _household, _me, () => Export = null);
 
     [RelayCommand]
     private void OpenSync() => Sync = new SyncViewModel(_session, _household.Id, Synced, () => Sync = null);
@@ -201,11 +287,18 @@ public partial class HomeViewModel : ViewModelBase
         _household = _session.Households.Get(_household.Id) ?? _household;
         _shownDay = _session.Today;
         _session.Reminders.Check(_household, _session.Now);
+        _session.PantryAlerts.Check(_household, _session.Now);
+        _session.ScheduleReminders(_household, _me);
         UpdateUnreadCount();
+        Pantry?.Refresh();
+        Shopping?.Refresh();
+        Meals?.Refresh();
 
         MyTasks.Clear();
         var filter = FilterText.Trim();
-        foreach (var row in _session.Tasks.VisibleTo(_me.Id).Select(Row).OfType<TaskRowViewModel>().Where(row => Matches(row, filter)))
+        var visible = _session.Tasks.VisibleTo(_me.Id);
+        _openSteps = visible.Where(task => task.ParentId is not null).GroupBy(task => task.ParentId!.Value).ToDictionary(group => group.Key, group => group.Count());
+        foreach (var row in InStepOrder(visible).Select(Row).OfType<TaskRowViewModel>().Where(row => Matches(row, filter)))
         {
             MyTasks.Add(row);
         }
@@ -215,6 +308,21 @@ public partial class HomeViewModel : ViewModelBase
         {
             var name = column.AssigneeId is { } id ? NameOf(id) : "Anyone";
             ChoreColumns.Add(new ChoreColumnViewModel(name, column.Chores.Select(Row).OfType<TaskRowViewModel>().ToList()));
+        }
+    }
+
+    // Each task followed by its steps. A step whose task isn't shown here stands on its own.
+    private static IEnumerable<TaskItem> InStepOrder(IReadOnlyList<TaskItem> tasks)
+    {
+        var shown = tasks.Select(task => task.Id).ToHashSet();
+        var steps = tasks.Where(task => task.ParentId is { } parent && shown.Contains(parent)).ToLookup(task => task.ParentId!.Value);
+        foreach (var task in tasks.Where(task => task.ParentId is not { } parent || !shown.Contains(parent)))
+        {
+            yield return task;
+            foreach (var step in steps[task.Id])
+            {
+                yield return step;
+            }
         }
     }
 
@@ -244,15 +352,25 @@ public partial class HomeViewModel : ViewModelBase
             canDelete: task.OwnerId == _me.Id,
             complete: () =>
             {
-                _session.Tasks.Complete(task.Id, _me.Id, _session.Now);
-                Refresh();
+                try
+                {
+                    _session.Tasks.Complete(task.Id, _me.Id, _session.Now);
+                    Refresh();
+                }
+                catch (Core.Tasks.TaskBlockedException blocked)
+                {
+                    _blockedTaskId = task.Id;
+                    BlockedQuestion = $"{task.Title} is waiting on {string.Join(", ", blocked.Blockers.Select(b => b.Title))}. Mark it done anyway?";
+                }
             },
             edit: () => Editor = new TaskEditorViewModel(_session, _household, _me, task, CloseEditor),
             delete: () =>
             {
                 _session.Tasks.Delete(task.Id);
                 Refresh();
-            });
+            },
+            waitingOn: _session.Tasks.OpenBlockersOf(task.Id).Select(blocker => blocker.Title).ToList(),
+            openSteps: _openSteps.GetValueOrDefault(task.Id));
     }
 
     private string NameOf(Guid profileId) =>

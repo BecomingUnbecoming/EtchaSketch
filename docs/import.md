@@ -25,10 +25,18 @@ choose the file (or paste its text), choose **Check the file** to see what would
 | `project`, `labels` | Project and labels |
 | `remindDaysBefore` (`1`) | A reminder that many days before the due date, as well as on it |
 | `dueTime` (`14:05`) | A time of day on the due date; reminders come at that time |
+| `parent` (another task's `source`) | Makes it a step (subtask) of that task |
+| `links` (`[{"kind": "blocks", "source": "vikunja:12"}]`; `blocks`, `blockedBy` or `related`) | Links to other tasks |
 | `remindMinutesBefore` (`15`) | Another reminder that many minutes before the due time |
 
-Start dates, attachments and comments aren't carried over. Links to other tasks (blocked by,
-related…) are written into the notes as lines like `Blocked by: Install the SDK`. The Vikunja
+Start dates, attachments and comments aren't carried over. Links and parents are made once every task
+in the file is in, so they can point at tasks further down the file or imported earlier; one pointing
+at a task that isn't there (finished tasks are left out) is listed as a problem and the task still goes in.
+
+**Imported before links existed?** Earlier imports wrote links into the notes as lines like
+`Blocked by: Install the SDK`. In the Import panel, **Turn link lines into links** makes them real links
+(and "Parent task" lines into subtasks) and removes the lines. A line naming a task it can't find, such
+as one that was finished and left out, stays as it is. It's safe to run more than once. The Vikunja
 converter turns the due date's time of day into `dueTime` (Vikunja can't store a date without a time, so
 midnight counts as "no time"), reminders a number of days before the due date into `remindDaysBefore`,
 and reminders less than a day before it into `remindMinutesBefore`. Reminders at a fixed date and time

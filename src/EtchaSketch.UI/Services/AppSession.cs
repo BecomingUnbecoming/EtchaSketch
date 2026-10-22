@@ -4,9 +4,11 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using EtchaSketch.Data.Notifications;
+using EtchaSketch.Data.Pantry;
 using EtchaSketch.Data.Profiles;
 using EtchaSketch.Data.Storage;
 using EtchaSketch.Data.Sync;
+using EtchaSketch.Core.Profiles;
 using EtchaSketch.Data.Tasks;
 using Microsoft.Data.Sqlite;
 
@@ -23,9 +25,18 @@ public sealed class AppSession : IDisposable
     private readonly DeviceSettings _settings;
     private bool _syncing;
 
-    private AppSession(SqliteConnection connection, TimeProvider clock, Func<Uri, ISyncServer> syncServers, IDeviceUnlock? deviceUnlock)
+    /// <summary>How far ahead the device's alarm clock is given reminders.</summary>
+    public static readonly TimeSpan ReminderHorizon = TimeSpan.FromDays(14);
+
+    private readonly IReminderScheduler? _reminderScheduler;
+    private readonly string? _deviceName;
+
+    private AppSession(SqliteConnection connection, TimeProvider clock, Func<Uri, ISyncServer> syncServers, IDeviceUnlock? deviceUnlock,
+        IReminderScheduler? reminderScheduler, string? deviceName)
     {
         _connection = connection;
+        _deviceName = deviceName;
+        _reminderScheduler = reminderScheduler;
         DeviceUnlock = deviceUnlock;
         _clock = clock;
         _syncServers = syncServers;
@@ -34,6 +45,9 @@ public sealed class AppSession : IDisposable
         Tasks = new TaskRepository(connection);
         Notifications = new NotificationRepository(connection);
         Reminders = new Reminders(Tasks, Notifications);
+        Pantry = new PantryRepository(connection);
+        PantryAlerts = new PantryAlerts(Pantry, Notifications);
+        Meals = new MealRepository(connection, Pantry);
         Locks = new ProfileLocks(connection);
 
         if (_settings.Get(SyncServerSetting) is { } address && Uri.TryCreate(address, UriKind.Absolute, out var server))
@@ -49,6 +63,15 @@ public sealed class AppSession : IDisposable
     public NotificationRepository Notifications { get; }
 
     public Reminders Reminders { get; }
+
+    /// <summary>The household's stock and shopping list.</summary>
+    public PantryRepository Pantry { get; }
+
+    /// <summary>Recipes and the meal plan.</summary>
+    public MealRepository Meals { get; }
+
+    /// <summary>Warns when something in stock is about to go off.</summary>
+    public PantryAlerts PantryAlerts { get; }
 
     /// <summary>Each person's PIN on this device.</summary>
     public ProfileLocks Locks { get; }
@@ -92,8 +115,16 @@ public sealed class AppSession : IDisposable
 
         return new AppSession(connection, environment.Clock ?? TimeProvider.System,
             environment.SyncServerFactory ?? (address => new HttpSyncServer(new HttpClient { BaseAddress = address, Timeout = TimeSpan.FromSeconds(30) })),
-            environment.DeviceUnlock);
+            environment.DeviceUnlock, environment.ReminderScheduler, environment.DeviceName);
     }
+
+    /// <summary>
+    /// Hands the device's alarm clock the reminders this person will get in the next two weeks, so
+    /// they arrive with the app closed. Only the person using the device: a phone shows its owner's
+    /// reminders, not the whole household's.
+    /// </summary>
+    public void ScheduleReminders(Household household, Profile person) =>
+        _reminderScheduler?.Replace(Reminders.Upcoming(household, person.Id, Now, ReminderHorizon));
 
     /// <summary>Starts syncing a household set up on this device through the server at an address.</summary>
     public async Task TurnOnSyncAsync(Uri address, Guid householdId, string? joinToken = null, CancellationToken cancellationToken = default)
@@ -156,7 +187,7 @@ public sealed class AppSession : IDisposable
         {
             _settings.Set(SyncServerSetting, address.ToString());
             SyncServerAddress = address;
-            Sync = new SyncEngine(_connection, _syncServers(address), _clock);
+            Sync = new SyncEngine(_connection, _syncServers(address), _clock) { DeviceName = _deviceName ?? Environment.MachineName };
         }
 
         return Sync!;

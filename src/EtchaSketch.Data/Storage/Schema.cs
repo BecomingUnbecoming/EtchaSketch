@@ -147,6 +147,114 @@ public static class Schema
         ALTER TABLE tasks ADD COLUMN remind_minutes_before INTEGER;
         ALTER TABLE tasks ADD COLUMN alarm INTEGER NOT NULL DEFAULT 0;
         """,
+
+        // 8: subtasks, links between tasks, and comments. All sync: a subtask and a comment go
+        // where their task goes, and a link goes where the more private of its two tasks goes.
+        """
+        -- No foreign key: sync can deliver a subtask before its parent. A subtask whose parent
+        -- isn't here (yet) shows as a top-level task, and deleting a task deletes its subtasks.
+        ALTER TABLE tasks ADD COLUMN parent_id TEXT;
+
+        CREATE INDEX tasks_by_parent ON tasks (parent_id);
+
+        CREATE TABLE task_links (
+            from_task TEXT NOT NULL REFERENCES tasks (id) ON DELETE CASCADE,
+            to_task TEXT NOT NULL REFERENCES tasks (id) ON DELETE CASCADE,
+            kind TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (from_task, to_task, kind)
+        );
+
+        CREATE INDEX task_links_by_target ON task_links (to_task);
+
+        CREATE TABLE task_comments (
+            id TEXT PRIMARY KEY,
+            task_id TEXT NOT NULL REFERENCES tasks (id) ON DELETE CASCADE,
+            author_id TEXT NOT NULL REFERENCES profiles (id),
+            text TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX task_comments_by_task ON task_comments (task_id, created_at);
+        """,
+
+        // 9: devices. Each device gets its own token with the sync server for every stream it
+        // holds, so one lost device can be cut off without changing anyone else's. The household
+        // keeps a list of its devices (it syncs) so any of them can remove another.
+        """
+        ALTER TABLE sync_keys ADD COLUMN registered INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE sync_keys ADD COLUMN enrolment TEXT;
+
+        CREATE TABLE devices (
+            id TEXT PRIMARY KEY,
+            household_id TEXT NOT NULL REFERENCES households (id),
+            profile_id TEXT REFERENCES profiles (id),
+            name TEXT NOT NULL,
+            added_at TEXT NOT NULL,
+            removed_at TEXT
+        );
+        """,
+
+        // 10: the pantry and the shopping list, shared with the household. Amounts are exact decimal text.
+        """
+        CREATE TABLE stock_items (
+            id TEXT PRIMARY KEY,
+            household_id TEXT NOT NULL REFERENCES households (id),
+            name TEXT NOT NULL,
+            amount TEXT NOT NULL,
+            unit TEXT,
+            location TEXT,
+            best_before TEXT,
+            low_at TEXT,
+            barcode TEXT,
+            tier INTEGER NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX stock_items_by_household ON stock_items (household_id);
+
+        CREATE TABLE shopping_items (
+            id TEXT PRIMARY KEY,
+            household_id TEXT NOT NULL REFERENCES households (id),
+            name TEXT NOT NULL,
+            amount TEXT,
+            unit TEXT,
+            stock_item_id TEXT,
+            bought_at TEXT,
+            tier INTEGER NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX shopping_items_by_household ON shopping_items (household_id);
+        """,
+
+        // 11: recipes and the meal plan, shared with the household. Ingredients are kept with their
+        // recipe as JSON, so a recipe always syncs whole.
+        """
+        CREATE TABLE recipes (
+            id TEXT PRIMARY KEY,
+            household_id TEXT NOT NULL REFERENCES households (id),
+            name TEXT NOT NULL,
+            servings INTEGER,
+            instructions TEXT,
+            ingredients TEXT NOT NULL,
+            tier INTEGER NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE planned_meals (
+            id TEXT PRIMARY KEY,
+            household_id TEXT NOT NULL REFERENCES households (id),
+            day TEXT NOT NULL,
+            meal TEXT NOT NULL,
+            recipe_id TEXT,
+            title TEXT NOT NULL,
+            cooked_at TEXT,
+            tier INTEGER NOT NULL
+        );
+
+        CREATE INDEX planned_meals_by_day ON planned_meals (household_id, day);
+        """,
     ];
 
     /// <summary>The version a fully upgraded database reports.</summary>
