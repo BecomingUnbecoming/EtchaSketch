@@ -60,6 +60,10 @@ public sealed class PantryRepository(SqliteConnection connection)
         return UpdateStock(item with { Amount = Math.Max(0, item.Amount - Math.Abs(amount)) });
     }
 
+    /// <summary>The stock item with this barcode, so scanning something already in stock finds it.</summary>
+    public StockItem? FindByBarcode(Guid householdId, string barcode) =>
+        Stock(householdId).FirstOrDefault(item => item.Barcode == barcode);
+
     /// <summary>What has run low.</summary>
     public IReadOnlyList<StockItem> Low(Guid householdId) => Stock(householdId).Where(item => item.IsLow).ToList();
 

@@ -14,6 +14,12 @@
             <Border Padding="12" CornerRadius="8" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
                 <StackPanel Spacing="8">
                     <TextBlock Text="{Binding SaveLabel}" FontWeight="SemiBold" />
+                    <WrapPanel>
+                        <TextBox Text="{Binding Barcode}" PlaceholderText="Barcode (optional)" Width="190" Margin="0,0,8,8" />
+                        <Button Content="Look up" Command="{Binding LookUpCommand}" Margin="0,0,8,8"
+                                ToolTip.Tip="Checks your stock, then asks Open Food Facts (an open database). Only the barcode is sent." />
+                        <Button Content="Scan" Command="{Binding ScanCommand}" IsVisible="{Binding CanScan}" Margin="0,0,8,8" />
+                    </WrapPanel>
                     <TextBox Text="{Binding Name}" PlaceholderText="What, like Milk or AA batteries" />
                     <WrapPanel>
                         <NumericUpDown Value="{Binding Amount}" Minimum="0" Increment="1" FormatString="0.##" Width="130" Margin="0,0,8,8"

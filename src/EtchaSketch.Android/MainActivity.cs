@@ -73,6 +73,14 @@ public class MainActivity : AvaloniaMainActivity
         }
     }
 
+    protected override void OnActivityResult(int requestCode, Result resultCode, Intent? data)
+    {
+        if (!AndroidBarcodeScanner.HandleResult(requestCode, resultCode, data))
+        {
+            base.OnActivityResult(requestCode, resultCode, data);
+        }
+    }
+
     protected override void OnDestroy()
     {
         if (AndroidDeviceUnlock.CurrentActivity == this)

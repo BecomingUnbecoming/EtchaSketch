@@ -2,12 +2,15 @@ using System;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
+using System.Net.Http;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using EtchaSketch.Core.Pantry;
 using EtchaSketch.Core.Profiles;
 using EtchaSketch.Data.Pantry;
 using EtchaSketch.UI.Services;
+using Gtin = EtchaSketch.Core.Pantry.Barcode;
 
 namespace EtchaSketch.UI.ViewModels;
 
@@ -39,6 +42,17 @@ public partial class PantryViewModel(AppSession session, Household household, Ac
     [ObservableProperty]
     public partial decimal? LowAt { get; set; }
 
+    /// <summary>The product's barcode: typed, or filled in by a scan.</summary>
+    [ObservableProperty]
+    public partial string? Barcode { get; set; }
+
+    /// <summary>Whether this device can scan with its camera.</summary>
+    public bool CanScan => session.BarcodeScanner is not null;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(LookUpCommand), nameof(ScanCommand))]
+    public partial bool IsLookingUp { get; private set; }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SaveLabel))]
     public partial bool IsEditing { get; private set; }
@@ -63,6 +77,13 @@ public partial class PantryViewModel(AppSession session, Household household, Ac
     [RelayCommand]
     private void Save()
     {
+        string? barcode = null;
+        if (!string.IsNullOrWhiteSpace(Barcode) && (barcode = Gtin.Normalize(Barcode)) is null)
+        {
+            Message = "That barcode doesn't check out. Look at the digits again, or leave it empty.";
+            return;
+        }
+
         try
         {
             var item = new StockItem
@@ -75,7 +96,7 @@ public partial class PantryViewModel(AppSession session, Household household, Ac
                 Location = Location,
                 BestBefore = BestBefore is { } date ? DateOnly.FromDateTime(date) : null,
                 LowAt = LowAt,
-                Barcode = _editing is { } id ? session.Pantry.GetStock(id)?.Barcode : null,
+                Barcode = barcode,
             };
             if (_editing is null)
             {
@@ -98,6 +119,79 @@ public partial class PantryViewModel(AppSession session, Household household, Ac
 
     [RelayCommand]
     private void CancelEdit() => ClearForm();
+
+    /// <summary>
+    /// Finds what a barcode is: first among what's already in stock, then in Open Food Facts. With
+    /// no connection, the barcode stays and the name can be typed.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanLookUp))]
+    private async Task LookUp()
+    {
+        if (Gtin.Normalize(Barcode) is not { } barcode)
+        {
+            Message = "That doesn't look like a barcode. It's the 8 to 14 digits under the stripes.";
+            return;
+        }
+
+        Barcode = barcode;
+        if (session.Pantry.FindByBarcode(household.Id, barcode) is { } known)
+        {
+            Edit(known);
+            Message = $"Already in stock: {known.Name}. Change the amount and save.";
+            return;
+        }
+
+        IsLookingUp = true;
+        try
+        {
+            if (await session.Products.LookupAsync(barcode) is { } product)
+            {
+                Name = product.DisplayName;
+                Message = product.Quantity is { } size ? $"Found {product.DisplayName} ({size})." : $"Found {product.DisplayName}.";
+            }
+            else
+            {
+                Message = "Open Food Facts doesn't know that one. Type the name; next time this barcode finds it here.";
+            }
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+        {
+            Message = "Couldn't reach Open Food Facts. Type the name instead; the barcode is kept.";
+        }
+        finally
+        {
+            IsLookingUp = false;
+        }
+    }
+
+    private bool CanLookUp() => !IsLookingUp;
+
+    /// <summary>Scans a barcode with the camera, then looks it up.</summary>
+    [RelayCommand(CanExecute = nameof(CanLookUp))]
+    private async Task Scan()
+    {
+        if (session.BarcodeScanner is not { } scanner)
+        {
+            return;
+        }
+
+        try
+        {
+            if (await scanner.ScanAsync() is not { } text)
+            {
+                return;
+            }
+
+            Barcode = text;
+        }
+        catch (BarcodeScannerMissingException)
+        {
+            Message = "Scanning needs a barcode scanner app. Binary Eye (free, from F-Droid or Accrescent) works; or type the digits.";
+            return;
+        }
+
+        await LookUp();
+    }
 
     [RelayCommand]
     private void AddLowToList()
@@ -127,6 +221,7 @@ public partial class PantryViewModel(AppSession session, Household household, Ac
         Location = item.Location;
         BestBefore = item.BestBefore?.ToDateTime(TimeOnly.MinValue);
         LowAt = item.LowAt;
+        Barcode = item.Barcode;
         IsEditing = true;
     }
 
@@ -152,6 +247,7 @@ public partial class PantryViewModel(AppSession session, Household household, Ac
         Location = null;
         BestBefore = null;
         LowAt = null;
+        Barcode = null;
         IsEditing = false;
     }
 }

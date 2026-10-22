@@ -1,4 +1,5 @@
 using System;
+using EtchaSketch.Core.Pantry;
 using EtchaSketch.Data.Storage;
 using EtchaSketch.Data.Sync;
 using EtchaSketch.UI.Services;
@@ -11,6 +12,8 @@ namespace EtchaSketch.UI;
 /// <param name="DeviceUnlock">The device's fingerprint or screen lock, where the platform offers one. Null means PIN only.</param>
 /// <param name="ReminderScheduler">The device's alarm clock for reminders. Null means reminders show only inside the app.</param>
 /// <param name="DeviceName">What this device is called in the household's device list. Null means the machine's name.</param>
+/// <param name="ProductLookup">Looks barcodes up online. Null means Open Food Facts; tests pass a fake.</param>
+/// <param name="BarcodeScanner">Scans barcodes with the camera. Null where the platform can't.</param>
 public sealed record AppEnvironment(
     string DatabasePath,
     IKeyStore KeyStore,
@@ -18,4 +21,6 @@ public sealed record AppEnvironment(
     Func<Uri, ISyncServer>? SyncServerFactory = null,
     IDeviceUnlock? DeviceUnlock = null,
     IReminderScheduler? ReminderScheduler = null,
-    string? DeviceName = null);
+    string? DeviceName = null,
+    IProductLookup? ProductLookup = null,
+    IBarcodeScanner? BarcodeScanner = null);

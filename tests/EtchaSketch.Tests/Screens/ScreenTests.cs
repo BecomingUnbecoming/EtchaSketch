@@ -10,6 +10,7 @@ using EtchaSketch.UI.ViewModels;
 namespace EtchaSketch.Tests.Screens;
 
 /// <summary>Drives the app's screens through their view models, the way a person would tap through them.</summary>
+[Collection(AppScreens.Name)]
 public sealed class ScreenTests : IDisposable
 {
     private readonly string _directory = Directory.CreateTempSubdirectory("etchasketch-screens-").FullName;
@@ -29,10 +30,11 @@ public sealed class ScreenTests : IDisposable
         Directory.Delete(_directory, recursive: true);
     }
 
-    private MainViewModel Launch(IReminderScheduler? scheduler = null)
+    private MainViewModel Launch(IReminderScheduler? scheduler = null, Core.Pantry.IProductLookup? products = null, IBarcodeScanner? scanner = null)
     {
         var app = new MainViewModel(new AppEnvironment(Path.Combine(_directory, "data", "etchasketch.db"), _keys,
-            new FixedClock(new DateTimeOffset(2026, 10, 21, 9, 0, 0, TimeSpan.Zero)), ReminderScheduler: scheduler));
+            new FixedClock(new DateTimeOffset(2026, 10, 21, 9, 0, 0, TimeSpan.Zero)), ReminderScheduler: scheduler,
+            ProductLookup: products ?? new FakeProducts(), BarcodeScanner: scanner));
         _apps.Add(app);
         return app;
     }
@@ -849,5 +851,101 @@ public sealed class ScreenTests : IDisposable
         detail.Upkeep.Single().DoneTodayCommand.Execute(null);
         detail.Upkeep.Single().DoneTodayCommand.Execute(null);
         Assert.EndsWith("done 2 times", detail.Upkeep.Single().Details, StringComparison.Ordinal);
+    }
+
+    private sealed class FakeProducts : Core.Pantry.IProductLookup
+    {
+        public bool Offline { get; set; }
+
+        public List<string> Asked { get; } = [];
+
+        public Task<Core.Pantry.ProductInfo?> LookupAsync(string barcode, CancellationToken cancellationToken = default)
+        {
+            Asked.Add(barcode);
+            return Offline
+                ? throw new HttpRequestException("No network")
+                : Task.FromResult(barcode == "4006381333931" ? new Core.Pantry.ProductInfo("Oat drink", "Oatly", "1 l") : null);
+        }
+    }
+
+    private sealed class FakeScanner(string? result) : IBarcodeScanner
+    {
+        public Task<string?> ScanAsync() => result is null ? throw new BarcodeScannerMissingException() : Task.FromResult<string?>(result);
+    }
+
+    [Fact]
+    public async Task A_barcode_fills_the_name_and_finds_it_again_next_time()
+    {
+        var products = new FakeProducts();
+        var pantry = SetUp(Launch(products: products)).Pantry;
+        Assert.False(pantry.CanScan);
+
+        pantry.Barcode = "4 006381 333931";
+        await pantry.LookUpCommand.ExecuteAsync(null);
+        Assert.Equal(("Oatly Oat drink", "4006381333931"), (pantry.Name, pantry.Barcode));
+        Assert.Equal("Found Oatly Oat drink (1 l).", pantry.Message);
+        pantry.SaveCommand.Execute(null);
+
+        pantry.Barcode = "4006381333931";
+        await pantry.LookUpCommand.ExecuteAsync(null);
+        Assert.True(pantry.IsEditing);
+        Assert.Equal("Already in stock: Oatly Oat drink. Change the amount and save.", pantry.Message);
+        Assert.Single(products.Asked);
+    }
+
+    [Fact]
+    public async Task With_no_network_the_barcode_stays_and_the_name_can_be_typed()
+    {
+        var pantry = SetUp(Launch(products: new FakeProducts { Offline = true })).Pantry;
+
+        pantry.Barcode = "73513537";
+        await pantry.LookUpCommand.ExecuteAsync(null);
+        Assert.Equal("Couldn't reach Open Food Facts. Type the name instead; the barcode is kept.", pantry.Message);
+
+        pantry.Name = "Crackers";
+        pantry.SaveCommand.Execute(null);
+        Assert.Equal("Crackers", pantry.Items.Single().Name);
+
+        pantry.Barcode = "73513537";
+        await pantry.LookUpCommand.ExecuteAsync(null);
+        Assert.Equal("Crackers", pantry.Name);
+    }
+
+    [Fact]
+    public async Task A_wrong_barcode_is_explained_and_not_saved()
+    {
+        var products = new FakeProducts();
+        var pantry = SetUp(Launch(products: products)).Pantry;
+
+        pantry.Barcode = "4006381333932";
+        await pantry.LookUpCommand.ExecuteAsync(null);
+        Assert.StartsWith("That doesn't look like a barcode.", pantry.Message, StringComparison.Ordinal);
+        Assert.Empty(products.Asked);
+
+        pantry.Name = "Milk";
+        pantry.SaveCommand.Execute(null);
+        Assert.StartsWith("That barcode doesn't check out.", pantry.Message, StringComparison.Ordinal);
+        Assert.Empty(pantry.Items);
+    }
+
+    [Fact]
+    public async Task Scanning_looks_the_barcode_up_and_a_missing_scanner_app_is_explained()
+    {
+        var pantry = SetUp(Launch(scanner: new FakeScanner("4006381333931"))).Pantry;
+        Assert.True(pantry.CanScan);
+        await pantry.ScanCommand.ExecuteAsync(null);
+        Assert.Equal("Oatly Oat drink", pantry.Name);
+
+        var other = new ScreenTests();
+        try
+        {
+            var noApp = other.SetUp(other.Launch(scanner: new FakeScanner(null))).Pantry;
+            await noApp.ScanCommand.ExecuteAsync(null);
+            Assert.StartsWith("Scanning needs a barcode scanner app.", noApp.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            other.Dispose();
+        }
     }
 }

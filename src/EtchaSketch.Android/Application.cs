@@ -21,7 +21,8 @@ namespace EtchaSketch.Android
                 DeviceUnlock: new AndroidDeviceUnlock(this),
                 ReminderScheduler: new AndroidReminderScheduler(this),
                 // Parentheses keep "::" from being read as the start of a format inside the braces.
-                DeviceName: $"{(global::Android.OS.Build.Manufacturer)} {(global::Android.OS.Build.Model)}".Trim());
+                DeviceName: $"{(global::Android.OS.Build.Manufacturer)} {(global::Android.OS.Build.Model)}".Trim(),
+                BarcodeScanner: new AndroidBarcodeScanner());
 
             return base.CustomizeAppBuilder(builder)
             .WithInterFont();
