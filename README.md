@@ -30,3 +30,7 @@ To sync between devices, run the sync server on a machine at home: see [docs/syn
 ## License
 
 AGPL-3.0. See [LICENSE](LICENSE).
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). This repository is public: keep real names, home network details and secrets out of it.
