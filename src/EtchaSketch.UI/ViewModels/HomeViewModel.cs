@@ -201,6 +201,7 @@ public partial class HomeViewModel : ViewModelBase
         _session.Reminders.Check(_household, _session.Now);
         _session.PantryAlerts.Check(_household, _session.Now);
         _session.Inventory.CheckWarranties(_household, _session.Notifications, _session.Now);
+        _session.Upkeep.CheckDue(_household, _session.Notifications, _session.Now);
         _session.ScheduleReminders(_household, _me);
         UpdateUnreadCount();
     }
@@ -316,6 +317,7 @@ public partial class HomeViewModel : ViewModelBase
         _session.Reminders.Check(_household, _session.Now);
         _session.PantryAlerts.Check(_household, _session.Now);
         _session.Inventory.CheckWarranties(_household, _session.Notifications, _session.Now);
+        _session.Upkeep.CheckDue(_household, _session.Notifications, _session.Now);
         _session.ScheduleReminders(_household, _me);
         UpdateUnreadCount();
         Pantry?.Refresh();

@@ -176,4 +176,19 @@ public sealed class NotificationRepositoryTests : IDisposable
 
         Assert.Throws<ArgumentException>(() => _notifications.Add(stranger, "a"));
     }
+
+    [Fact]
+    public void A_kind_from_a_newer_version_is_shown_rather_than_breaking_the_feed()
+    {
+        _notifications.Add(For(_robin, "Oil change is due"), "from-the-future");
+        using (var command = _db.CreateCommand())
+        {
+            command.CommandText = "UPDATE notifications SET kind = 'SomethingAddedLater'";
+            command.ExecuteNonQuery();
+        }
+
+        var shown = Assert.Single(_notifications.Feed(_robin.Id, Evening).Shown);
+
+        Assert.Equal(("Oil change is due", NotificationKind.Other), (shown.Title, shown.Kind));
+    }
 }

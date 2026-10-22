@@ -30,6 +30,10 @@
                     </WrapPanel>
                     <TextBox Text="{Binding Manual}" PlaceholderText="Manual: a link, or where the paper one is" />
                     <TextBox Text="{Binding Notes}" PlaceholderText="Notes" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="60" />
+                    <WrapPanel>
+                        <CheckBox Content="It's a vehicle (keeps a distance, for fuel and services)" IsChecked="{Binding IsVehicle}" Margin="0,0,8,8" />
+                        <ComboBox ItemsSource="{Binding DistanceUnits}" SelectedItem="{Binding DistanceUnit}" IsVisible="{Binding IsVehicle}" Margin="0,0,8,8" />
+                    </WrapPanel>
                     <StackPanel Spacing="4">
                         <TextBlock Text="Who has it" />
                         <ComboBox ItemsSource="{Binding WhoHasItOptions}" SelectedItem="{Binding WhoHasIt}" MinWidth="200" />
@@ -41,6 +45,9 @@
                 </StackPanel>
             </Border>
 
+            <ContentControl Content="{Binding Detail}" IsVisible="{Binding IsShowingDetail}" />
+
+            <StackPanel Spacing="10" IsVisible="{Binding !IsShowingDetail}">
             <TextBox Text="{Binding Search}" PlaceholderText="Search by name, place, kind, serial or notes" IsVisible="{Binding !IsShowingOne}" />
             <Button Content="Show everything" Command="{Binding ShowEverythingCommand}" IsVisible="{Binding IsShowingOne}" />
             <TextBlock Text="{Binding Message}" TextWrapping="Wrap"
@@ -67,6 +74,7 @@
                                 </StackPanel>
                                 <WrapPanel Grid.Column="1" VerticalAlignment="Center" MaxWidth="260">
                                     <Button Content="It's back" Command="{Binding ReturnCommand}" IsVisible="{Binding IsBorrowed}" Margin="0,0,4,4" />
+                                    <Button Content="Upkeep and log" Command="{Binding DetailCommand}" Margin="0,0,4,4" />
                                     <Button Content="QR label" Click="Label_Click" Margin="0,0,4,4"
                                             ToolTip.Tip="Save a label to print. Scanning it on a phone opens this item." />
                                     <Button Content="Edit" Command="{Binding EditCommand}" Margin="0,0,4,4" />
@@ -77,6 +85,7 @@
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+            </StackPanel>
         </StackPanel>
     </ScrollViewer>
 </UserControl>

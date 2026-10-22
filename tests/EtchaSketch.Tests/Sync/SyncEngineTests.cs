@@ -365,9 +365,15 @@ public sealed class SyncEngineTests : IAsyncLifetime
             Sync = new SyncEngine(_db, server, Clock);
             Locks = new ProfileLocks(_db, iterations: 1_000);
             Pantry = new Data.Pantry.PantryRepository(_db);
+            Inventory = new Data.Pantry.InventoryRepository(_db);
+            Upkeep = new Data.Pantry.UpkeepRepository(_db, Inventory);
         }
 
         public Data.Pantry.PantryRepository Pantry { get; }
+
+        public Data.Pantry.InventoryRepository Inventory { get; }
+
+        public Data.Pantry.UpkeepRepository Upkeep { get; }
 
         public ManualClock Clock { get; } = new(Wednesday);
 
@@ -561,5 +567,29 @@ public sealed class SyncEngineTests : IAsyncLifetime
 
         Assert.NotNull(Assert.Single(kaisPhone.Pantry.ShoppingList(_home.Id)).BoughtAt);
         Assert.Equal(1, kaisPhone.Pantry.GetStock(milk.Id)!.Amount);
+    }
+
+    [Fact]
+    public async Task A_fuel_entry_on_one_phone_makes_the_service_due_on_the_other()
+    {
+        var car = _desktop.Inventory.Add(new Core.Pantry.InventoryItem { HouseholdId = _home.Id, Name = "Corolla", DistanceUnit = "km" });
+        var oil = _desktop.Upkeep.AddUpkeep(new Core.Pantry.Upkeep
+        {
+            HouseholdId = _home.Id, ItemId = car.Id, Name = "Oil change", EveryDistance = 10_000, LastDoneOn = new DateOnly(2026, 6, 1), LastDoneDistance = 30_000,
+        });
+        await _desktop.Sync.SyncAsync();
+        var robinsPhone = await JoinAs(_robin, "robin-phone");
+        var kaisPhone = await JoinAs(_kai, "kai-phone");
+
+        robinsPhone.Upkeep.Log(new Core.Pantry.ItemLogEntry
+        {
+            HouseholdId = _home.Id, ItemId = car.Id, Kind = Core.Pantry.LogKind.Fuel, On = new DateOnly(2026, 10, 21), Distance = 40_100, Cost = 70m,
+        });
+        await robinsPhone.Sync.SyncAsync();
+        await kaisPhone.Sync.SyncAsync();
+
+        Assert.Equal(40_100, kaisPhone.Upkeep.DistanceNow(car.Id));
+        Assert.True(kaisPhone.Upkeep.GetUpkeep(oil.Id)!.IsDue(new DateOnly(2026, 10, 21), kaisPhone.Upkeep.DistanceNow(car.Id)));
+        Assert.Equal("km", kaisPhone.Inventory.Get(car.Id)!.DistanceUnit);
     }
 }

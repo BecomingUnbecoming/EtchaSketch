@@ -137,7 +137,7 @@ public sealed class NotificationRepository(SqliteConnection connection)
             {
                 Id = Guid.Parse(reader.GetString(0)),
                 OwnerId = Guid.Parse(reader.GetString(1)),
-                Kind = Enum.Parse<NotificationKind>(reader.GetString(2)),
+                Kind = Enum.TryParse<NotificationKind>(reader.GetString(2), out var kind) ? kind : NotificationKind.Other,
                 Title = reader.GetString(3),
                 Body = reader.IsDBNull(4) ? null : reader.GetString(4),
                 TaskId = reader.IsDBNull(5) ? null : Guid.Parse(reader.GetString(5)),
