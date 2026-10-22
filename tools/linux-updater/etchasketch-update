@@ -1,0 +1,56 @@
+#!/bin/sh
+# Keeps a Linux desktop install of EtchaSketch on the newest release.
+#
+# It asks GitHub for the latest release, and if it is newer than what's installed and the app isn't
+# running, downloads the Linux build, checks it against the release's SHA256SUMS, and copies it over the
+# install folder. The app keeps its database in that same folder, so files are only ever added or
+# replaced, never removed, and the database is never touched. Run by etchasketch-update.timer.
+set -eu
+
+REPO=${ETCHASKETCH_REPO:-BecomingUnbecoming/EtchaSketch}
+APP_DIR=${ETCHASKETCH_DIR:-$HOME/.local/share/EtchaSketch}
+STAMP=$APP_DIR/.installed-release
+API=${ETCHASKETCH_API:-https://api.github.com/repos/$REPO/releases/latest}
+
+say() { printf 'etchasketch-update: %s\n' "$*"; }
+
+notify() {
+    command -v notify-send >/dev/null 2>&1 && notify-send -a EtchaSketch "EtchaSketch" "$1" || true
+}
+
+release=$(curl -fsSL --max-time 30 "$API") || { say "no release available yet (or GitHub unreachable); trying again later"; exit 0; }
+tag=$(printf '%s' "$release" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)
+[ -n "$tag" ] || { say "no release found"; exit 0; }
+
+installed=$(cat "$STAMP" 2>/dev/null || true)
+if [ "$installed" = "$tag" ]; then
+    say "already on $tag"
+    exit 0
+fi
+
+# Never replace files under a running app.
+for f in /proc/[0-9]*/comm; do
+    read -r name < "$f" 2>/dev/null || continue
+    case $name in EtchaSketch*) say "$tag is ready; the app is open, trying again later"; exit 0 ;; esac
+done
+
+url() { printf '%s' "$release" | grep -o "\"browser_download_url\": *\"[^\"]*$1\"" | sed 's/.*"\([a-z]*:[^"]*\)"/\1/' | head -1; }
+tarball_url=$(url 'desktop-linux-x64-[^"]*\.tar\.gz')
+sums_url=$(url 'SHA256SUMS')
+[ -n "$tarball_url" ] && [ -n "$sums_url" ] || { say "$tag has no Linux build"; exit 1; }
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+tarball=$work/$(basename "$tarball_url")
+curl -fsSL --max-time 600 -o "$tarball" "$tarball_url"
+curl -fsSL --max-time 30 -o "$work/SHA256SUMS" "$sums_url"
+( cd "$work" && grep " $(basename "$tarball")\$" SHA256SUMS | sha256sum -c --quiet - ) || { say "checksum mismatch, not installing"; exit 1; }
+
+mkdir -p "$work/new" "$APP_DIR"
+tar -xzf "$tarball" -C "$work/new"
+[ -f "$work/new/EtchaSketch.Desktop" ] || { say "the download has no EtchaSketch.Desktop"; exit 1; }
+cp -a "$work/new/." "$APP_DIR/"
+chmod +x "$APP_DIR/EtchaSketch.Desktop"
+printf '%s\n' "$tag" > "$STAMP"
+say "installed $tag"
+notify "Updated to ${tag#v}. It's ready next time you open the app."

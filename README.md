@@ -27,6 +27,8 @@ The Android and iOS projects also need their workloads (`dotnet workload install
 
 To sync between devices, run the sync server on a machine at home: see [docs/sync-server.md](docs/sync-server.md).
 
+To install and keep up to date (phones through Obtainium, the Linux desktop through a small updater), see [docs/updates.md](docs/updates.md).
+
 ## License
 
 AGPL-3.0. See [LICENSE](LICENSE).

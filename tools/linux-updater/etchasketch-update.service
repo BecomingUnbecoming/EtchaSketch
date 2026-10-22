@@ -1,0 +1,8 @@
+[Unit]
+Description=Install the newest EtchaSketch desktop release
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/etchasketch-update
