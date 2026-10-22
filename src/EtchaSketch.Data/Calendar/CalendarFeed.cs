@@ -13,8 +13,12 @@ namespace EtchaSketch.Data.Calendar;
 /// and time blocks, upkeep coming due, warranties ending and planned meals. Only what that person
 /// may see, through the same rules as the screens that own each thing.
 /// </summary>
-public sealed class CalendarFeed(TaskRepository tasks, EventRepository events, InventoryRepository inventory, UpkeepRepository upkeep, MealRepository meals)
+public sealed class CalendarFeed(TaskRepository tasks, EventRepository events, InventoryRepository inventory, UpkeepRepository upkeep, MealRepository meals,
+    SubscriptionRepository subscriptions, TimeZoneInfo zone)
 {
+    // Each fetched calendar read once, until it's fetched again.
+    private readonly Dictionary<Guid, (DateTimeOffset FetchedAt, IReadOnlyList<Core.Calendar.IcsEvent> Events)> _parsed = [];
+
     /// <summary>Every entry from <paramref name="from"/> to <paramref name="to"/>, by day, then all-day first, then time.</summary>
     public IReadOnlyList<CalendarEntry> Between(Household household, Guid personId, DateOnly from, DateOnly to)
     {
@@ -76,6 +80,22 @@ public sealed class CalendarFeed(TaskRepository tasks, EventRepository events, I
             entries.Add(new CalendarEntry(meal.Day, null, null, $"{meal.Meal}: {meal.Title}", EntryKind.Meal, meal.Id));
         }
 
+        foreach (var subscription in subscriptions.VisibleTo(personId))
+        {
+            foreach (var ics in Parsed(subscription.Id))
+            {
+                foreach (var start in Core.Calendar.Ics.Starts(ics, from, to))
+                {
+                    var last = start.AddDays(ics.ExtraDays);
+                    for (var day = Max(start, from); day <= Min(last, to); day = day.AddDays(1))
+                    {
+                        entries.Add(new CalendarEntry(day, day == start ? ics.Start.Time : null, day == last ? ics.End?.Time is { } end && end != TimeOnly.MinValue ? end : null : null,
+                            ics.Summary, EntryKind.Subscribed, subscription.Id, subscription.Name));
+                    }
+                }
+            }
+        }
+
         return entries
             .OrderBy(entry => entry.Day)
             .ThenBy(entry => entry.Start is not null)
@@ -83,6 +103,29 @@ public sealed class CalendarFeed(TaskRepository tasks, EventRepository events, I
             .ThenBy(entry => entry.Kind)
             .ThenBy(entry => entry.Title, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
+    }
+
+    private IReadOnlyList<Core.Calendar.IcsEvent> Parsed(Guid subscriptionId)
+    {
+        if (subscriptions.Cached(subscriptionId) is not { } cached)
+        {
+            return [];
+        }
+
+        if (!_parsed.TryGetValue(subscriptionId, out var parsed) || parsed.FetchedAt != cached.FetchedAt)
+        {
+            // A changed occurrence (RECURRENCE-ID) replaces that day of its series.
+            var all = Core.Calendar.Ics.Parse(cached.Content, zone);
+            var moved = all.Where(ics => ics.RecurrenceId is not null).GroupBy(ics => ics.Uid)
+                .ToDictionary(group => group.Key, group => group.Select(ics => ics.RecurrenceId!.Value).ToList());
+            var events = all.Select(ics => ics.RecurrenceId is null && moved.TryGetValue(ics.Uid, out var days)
+                ? ics with { Excluded = [.. ics.Excluded, .. days] }
+                : ics).ToList();
+            parsed = (cached.FetchedAt, events);
+            _parsed[subscriptionId] = parsed;
+        }
+
+        return parsed.Events;
     }
 
     /// <summary>The days a task falls on in a range: its due date, and for a repeating one each repeat after it.</summary>

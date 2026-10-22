@@ -282,6 +282,8 @@ public partial class HomeViewModel : ViewModelBase
             {
                 Synced(result);
             }
+
+            await Calendar.FetchDueSubscriptionsAsync();
         }
         catch (Exception exception) when (Messages.IsSyncProblem(exception))
         {

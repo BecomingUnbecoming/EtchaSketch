@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using EtchaSketch.Core.Calendar;
@@ -137,6 +138,7 @@ public partial class CalendarViewModel : ViewModelBase
             _ => Anchor.ToString("MMMM yyyy", CultureInfo.CurrentCulture),
         };
 
+        LoadSubscriptions();
         var entries = _session.Calendar.Between(_household(), _me.Id, from, to).ToLookup(entry => entry.Day);
         var mine = _session.Events.VisibleTo(_me.Id, from, to).Where(found => found.OwnerId == _me.Id).Select(found => found.Id).ToHashSet();
         Days.Clear();
@@ -154,6 +156,96 @@ public partial class CalendarViewModel : ViewModelBase
                     Mode = CalendarMode.Day;
                 }));
         }
+    }
+
+    // Calendars followed by link.
+
+    public ObservableCollection<SubscriptionRowViewModel> Subscriptions { get; } = [];
+
+    public bool HasNoSubscriptions => Subscriptions.Count == 0;
+
+    [ObservableProperty]
+    public partial string? SubscriptionName { get; set; }
+
+    [ObservableProperty]
+    public partial string? SubscriptionLink { get; set; }
+
+    [ObservableProperty]
+    public partial bool ShareSubscription { get; set; }
+
+    [ObservableProperty]
+    public partial string? SubscriptionMessage { get; private set; }
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(AddSubscriptionCommand), nameof(RefreshSubscriptionsCommand))]
+    public partial bool IsFetching { get; private set; }
+
+    private bool CanFetch() => !IsFetching;
+
+    [RelayCommand(CanExecute = nameof(CanFetch))]
+    private async Task AddSubscription()
+    {
+        try
+        {
+            _session.Subscriptions.Add(_household().Id, _me.Id, SubscriptionName ?? "", SubscriptionLink ?? "", ShareSubscription);
+        }
+        catch (ArgumentException exception)
+        {
+            SubscriptionMessage = Messages.Friendly(exception);
+            return;
+        }
+
+        SubscriptionName = null;
+        SubscriptionLink = null;
+        ShareSubscription = false;
+        await FetchAsync(force: false);
+    }
+
+    /// <summary>Fetches every followed calendar now.</summary>
+    [RelayCommand(CanExecute = nameof(CanFetch))]
+    private Task RefreshSubscriptions() => FetchAsync(force: true);
+
+    /// <summary>Fetches the followed calendars that are due a fetch. The home screen calls this every minute; it rarely does anything.</summary>
+    public Task FetchDueSubscriptionsAsync() => IsFetching ? Task.CompletedTask : FetchAsync(force: false, quiet: true);
+
+    private async Task FetchAsync(bool force, bool quiet = false)
+    {
+        IsFetching = true;
+        try
+        {
+            var result = await _session.FetchCalendarsAsync(_me.Id, force);
+            if (!quiet || result.Problems.Count > 0)
+            {
+                SubscriptionMessage = result.Problems.Count > 0 ? string.Join("\n", result.Problems)
+                    : result.Fetched == 1 ? "Fetched 1 calendar." : $"Fetched {result.Fetched} calendars.";
+            }
+
+            if (result.Fetched > 0 || !quiet)
+            {
+                Refresh();
+            }
+        }
+        finally
+        {
+            IsFetching = false;
+        }
+    }
+
+    private void LoadSubscriptions()
+    {
+        Subscriptions.Clear();
+        foreach (var subscription in _session.Subscriptions.VisibleTo(_me.Id))
+        {
+            var cached = _session.Subscriptions.Cached(subscription.Id);
+            Subscriptions.Add(new SubscriptionRowViewModel(subscription, _me.Id, cached?.FetchedAt is { } at ? _session.Local(at) : null, () =>
+            {
+                _session.Subscriptions.Delete(subscription.Id);
+                Refresh();
+                _changed();
+            }));
+        }
+
+        OnPropertyChanged(nameof(HasNoSubscriptions));
     }
 
     // The event form.
@@ -367,6 +459,7 @@ public sealed class CalendarEntryViewModel
             EntryKind.Upkeep => "Upkeep",
             EntryKind.Warranty => "Warranty",
             EntryKind.Meal => "Meal",
+            EntryKind.Subscribed => "Subscribed",
             _ => "",
         };
         Detail = entry.Detail;
@@ -378,6 +471,7 @@ public sealed class CalendarEntryViewModel
             EntryKind.TimeBlock => "#F59E0B",
             EntryKind.Upkeep => "#EF4444",
             EntryKind.Warranty => "#EF4444",
+            EntryKind.Subscribed => "#0EA5E9",
             _ => "#6B7280",
         });
         CanEdit = edit is not null;
@@ -400,4 +494,21 @@ public sealed class CalendarEntryViewModel
     public bool CanEdit { get; }
 
     public IRelayCommand EditCommand { get; }
+}
+
+/// <summary>"School · shared · fetched 21 Oct 09:00" with Remove for its owner.</summary>
+public sealed class SubscriptionRowViewModel(Data.Calendar.CalendarSubscription subscription, Guid me, DateTimeOffset? fetchedAt, Action remove)
+{
+    public string Name { get; } = subscription.Name;
+
+    public string Details { get; } = string.Join(" · ", new[]
+    {
+        subscription.Tier <= PrivacyTier.Household ? "shared" : "only you",
+        fetchedAt is { } at ? $"fetched {at.ToString("d MMM HH:mm", CultureInfo.CurrentCulture)}" : "not fetched yet",
+    });
+
+    /// <summary>Only whoever added it can remove it.</summary>
+    public bool CanRemove { get; } = subscription.OwnerId == me;
+
+    public IRelayCommand RemoveCommand { get; } = new RelayCommand(remove, () => subscription.OwnerId == me);
 }

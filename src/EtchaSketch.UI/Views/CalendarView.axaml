@@ -48,6 +48,38 @@
                 </StackPanel>
             </Border>
 
+            <Expander HorizontalAlignment="Stretch">
+                <Expander.Header>
+                    <TextBlock Text="Calendars you follow (school, holidays…)" />
+                </Expander.Header>
+                <StackPanel Spacing="8">
+                    <TextBlock Text="None yet. Paste a calendar's link (often ending in .ics) to see its events here." TextWrapping="Wrap" Opacity="0.7"
+                               IsVisible="{Binding HasNoSubscriptions}" />
+                    <ItemsControl ItemsSource="{Binding Subscriptions}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:SubscriptionRowViewModel">
+                                <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,4">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding Details}" FontSize="12" Opacity="0.7" />
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Content="Remove" Command="{Binding RemoveCommand}" IsVisible="{Binding CanRemove}" VerticalAlignment="Center" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBox Text="{Binding SubscriptionName}" PlaceholderText="Name, like School or Bank holidays" />
+                    <TextBox Text="{Binding SubscriptionLink}" PlaceholderText="Link (https://… or webcal://…)" />
+                    <CheckBox Content="Share with the household (they'll see the link too)" IsChecked="{Binding ShareSubscription}" />
+                    <WrapPanel>
+                        <Button Content="Follow" Command="{Binding AddSubscriptionCommand}" Margin="0,0,8,0" />
+                        <Button Content="Fetch now" Command="{Binding RefreshSubscriptionsCommand}" />
+                    </WrapPanel>
+                    <TextBlock Text="{Binding SubscriptionMessage}" TextWrapping="Wrap"
+                               IsVisible="{Binding SubscriptionMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                </StackPanel>
+            </Expander>
+
             <!-- Day and week: a list, one heading per day. -->
             <ItemsControl ItemsSource="{Binding Days}" IsVisible="{Binding IsList}">
                 <ItemsControl.ItemTemplate>

@@ -69,6 +69,9 @@ public enum EntryKind
     Upkeep,
     Warranty,
     Meal,
+
+    /// <summary>From a calendar subscribed to by link. Read only.</summary>
+    Subscribed,
 }
 
 /// <summary>

@@ -31,11 +31,12 @@ public sealed class ScreenTests : IDisposable
     }
 
     private MainViewModel Launch(IReminderScheduler? scheduler = null, Core.Pantry.IProductLookup? products = null, IBarcodeScanner? scanner = null,
-        Func<Uri, string, Func<string, Task<System.Text.Json.JsonElement>>>? grocy = null)
+        Func<Uri, string, Func<string, Task<System.Text.Json.JsonElement>>>? grocy = null, Func<Uri, Task<string>>? calendars = null)
     {
         var app = new MainViewModel(new AppEnvironment(Path.Combine(_directory, "data", "etchasketch.db"), _keys,
             new FixedClock(new DateTimeOffset(2026, 10, 21, 9, 0, 0, TimeSpan.Zero)), ReminderScheduler: scheduler,
-            ProductLookup: products ?? new FakeProducts(), BarcodeScanner: scanner, GrocyReader: grocy));
+            ProductLookup: products ?? new FakeProducts(), BarcodeScanner: scanner, GrocyReader: grocy,
+            CalendarFetcher: calendars ?? (_ => throw new HttpRequestException("No network in tests"))));
         _apps.Add(app);
         return app;
     }
@@ -1152,5 +1153,42 @@ public sealed class ScreenTests : IDisposable
         var titles = kai.Calendar.Days.SelectMany(day => day.Entries).Select(entry => entry.Title).ToList();
         Assert.Equal(["Dinner at Mum's"], titles);
         Assert.False(kai.Calendar.Days.SelectMany(day => day.Entries).Single().CanEdit);
+    }
+
+    [Fact]
+    public async Task A_calendar_followed_by_link_shows_its_events_and_only_its_owner_can_remove_it()
+    {
+        var fetches = 0;
+        var app = Launch(calendars: _ =>
+        {
+            fetches++;
+            return Task.FromResult("BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:1\r\nDTSTART;VALUE=DATE:20261023\r\nSUMMARY:Inset day\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
+        });
+        var home = SetUp(app);
+        var calendar = home.Calendar;
+        Assert.True(calendar.HasNoSubscriptions);
+
+        calendar.SubscriptionName = "School";
+        calendar.SubscriptionLink = "ftp://school.example/term.ics";
+        await calendar.AddSubscriptionCommand.ExecuteAsync(null);
+        Assert.StartsWith("Paste the calendar's link", calendar.SubscriptionMessage, StringComparison.Ordinal);
+
+        calendar.SubscriptionLink = "webcal://school.example/term.ics";
+        calendar.ShareSubscription = true;
+        await calendar.AddSubscriptionCommand.ExecuteAsync(null);
+        Assert.Equal("Fetched 1 calendar.", calendar.SubscriptionMessage);
+        var row = Assert.Single(calendar.Subscriptions);
+        Assert.Equal(("School", "shared · fetched 21 Oct 09:00"), (row.Name, row.Details));
+        var inset = calendar.Days.SelectMany(day => day.Entries).Single();
+        Assert.Equal(("Inset day", "Subscribed", "School"), (inset.Title, inset.KindText, inset.Detail));
+
+        await calendar.FetchDueSubscriptionsAsync();
+        Assert.Equal(1, fetches);
+
+        home.SwitchPersonCommand.Execute(null);
+        Assert.IsType<ProfilePickerViewModel>(app.CurrentPage).People.Single(person => person.Name == "Kai").ChooseCommand.Execute(null);
+        var kai = Assert.IsType<HomeViewModel>(app.CurrentPage);
+        Assert.Contains(kai.Calendar.Days.SelectMany(day => day.Entries), entry => entry.Title == "Inset day");
+        Assert.False(kai.Calendar.Subscriptions.Single().CanRemove);
     }
 }

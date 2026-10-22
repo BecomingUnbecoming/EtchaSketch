@@ -336,6 +336,26 @@ public static class Schema
 
         CREATE INDEX calendar_events_by_start ON calendar_events (household_id, start_date);
         """,
+
+        // 15: calendars subscribed to by link (holidays, school). The list syncs like events; what was
+        // fetched stays on each device, which fetches for itself.
+        """
+        CREATE TABLE calendar_subscriptions (
+            id TEXT PRIMARY KEY,
+            household_id TEXT NOT NULL REFERENCES households (id),
+            owner_id TEXT NOT NULL REFERENCES profiles (id),
+            name TEXT NOT NULL,
+            url TEXT NOT NULL,
+            tier INTEGER NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE subscription_cache (
+            subscription_id TEXT PRIMARY KEY REFERENCES calendar_subscriptions (id) ON DELETE CASCADE,
+            fetched_at TEXT NOT NULL,
+            content TEXT NOT NULL
+        );
+        """,
     ];
 
     /// <summary>The version a fully upgraded database reports.</summary>
