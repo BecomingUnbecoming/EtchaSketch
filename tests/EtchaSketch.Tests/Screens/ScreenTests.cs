@@ -1074,4 +1074,83 @@ public sealed class ScreenTests : IDisposable
             other.Dispose();
         }
     }
+
+    [Fact]
+    public void The_calendar_shows_a_timed_task_a_chore_and_a_time_block_in_one_week()
+    {
+        var home = SetUp(Launch());
+        AddTask(home, "Vet", editor =>
+        {
+            editor.DueDate = new DateTime(2026, 10, 22);
+            editor.DueTime = new TimeSpan(14, 5, 0);
+        });
+        AddTask(home, "Bins out", editor =>
+        {
+            editor.DueDate = new DateTime(2026, 10, 21);
+            editor.IsShared = true;
+        });
+
+        var calendar = home.Calendar;
+        calendar.NewEventCommand.Execute(null);
+        Assert.True(calendar.IsFormOpen);
+        calendar.Title = "Deep work";
+        calendar.StartDate = new DateTime(2026, 10, 23);
+        calendar.StartTime = new TimeSpan(9, 0, 0);
+        calendar.EndTime = new TimeSpan(11, 30, 0);
+        calendar.IsTimeBlock = true;
+        calendar.SaveCommand.Execute(null);
+        Assert.Null(calendar.Message);
+        Assert.False(calendar.IsFormOpen);
+
+        Assert.Equal(CalendarMode.Week, calendar.Mode);
+        var shown = calendar.Days.SelectMany(day => day.Entries.Select(entry => $"{day.Date:dd} {entry.TimeText} {entry.KindText}: {entry.Title}")).ToList();
+        Assert.Equal(["21  Chore: Bins out", "22 14:05 Task: Vet", "23 09:00–11:30 Time block: Deep work"], shown);
+        Assert.StartsWith("Today", calendar.Days.Single(day => day.Date == new DateOnly(2026, 10, 21)).Heading, StringComparison.Ordinal);
+
+        var block = calendar.Days.SelectMany(day => day.Entries).Single(entry => entry.Title == "Deep work");
+        Assert.True(block.CanEdit);
+        Assert.False(calendar.Days.SelectMany(day => day.Entries).Single(entry => entry.Title == "Vet").CanEdit);
+        block.EditCommand.Execute(null);
+        Assert.Equal(("Deep work", true), (calendar.Title, calendar.IsTimeBlock));
+        calendar.Title = "Writing";
+        calendar.SaveCommand.Execute(null);
+        Assert.Contains(calendar.Days.SelectMany(day => day.Entries), entry => entry.Title == "Writing");
+    }
+
+    [Fact]
+    public void The_month_grid_opens_a_day_and_a_shared_event_reaches_the_other_person()
+    {
+        var app = Launch();
+        var home = SetUp(app);
+        var calendar = home.Calendar;
+        calendar.ShowMonthCommand.Execute(null);
+        Assert.Equal("October 2026", calendar.Heading);
+        Assert.Equal(0, calendar.Days.Count % 7);
+        Assert.Contains(calendar.Days, day => day.Date == new DateOnly(2026, 10, 1));
+        Assert.Contains(calendar.Days, day => day.Date == new DateOnly(2026, 10, 31));
+
+        calendar.NewEventCommand.Execute(null);
+        calendar.Title = "Dinner at Mum's";
+        calendar.StartDate = new DateTime(2026, 10, 25);
+        calendar.Notes = "Bring wine";
+        calendar.IsShared = true;
+        calendar.SaveCommand.Execute(null);
+        calendar.NewEventCommand.Execute(null);
+        calendar.Title = "Therapy";
+        calendar.StartDate = new DateTime(2026, 10, 26);
+        calendar.SaveCommand.Execute(null);
+
+        calendar.Days.Single(day => day.Date == new DateOnly(2026, 10, 25)).OpenCommand.Execute(null);
+        Assert.Equal((CalendarMode.Day, "Sunday 25 Oct 2026"), (calendar.Mode, calendar.Heading));
+        Assert.Equal(["Dinner at Mum's"], calendar.Days.Single().Entries.Select(entry => entry.Title));
+
+        home.SwitchPersonCommand.Execute(null);
+        var picker = Assert.IsType<ProfilePickerViewModel>(app.CurrentPage);
+        picker.People.Single(person => person.Name == "Kai").ChooseCommand.Execute(null);
+        var kai = Assert.IsType<HomeViewModel>(app.CurrentPage);
+        kai.Calendar.ShowMonthCommand.Execute(null);
+        var titles = kai.Calendar.Days.SelectMany(day => day.Entries).Select(entry => entry.Title).ToList();
+        Assert.Equal(["Dinner at Mum's"], titles);
+        Assert.False(kai.Calendar.Days.SelectMany(day => day.Entries).Single().CanEdit);
+    }
 }

@@ -315,6 +315,27 @@ public static class Schema
 
         CREATE INDEX item_log_by_item ON item_log (item_id);
         """,
+
+        // 14: calendar events and time blocks. Private to the owner unless shared; notes always the owner's.
+        """
+        CREATE TABLE calendar_events (
+            id TEXT PRIMARY KEY,
+            household_id TEXT NOT NULL REFERENCES households (id),
+            owner_id TEXT NOT NULL REFERENCES profiles (id),
+            title TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            start_date TEXT NOT NULL,
+            start_time TEXT,
+            end_date TEXT,
+            end_time TEXT,
+            location TEXT,
+            notes TEXT,
+            tier INTEGER NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX calendar_events_by_start ON calendar_events (household_id, start_date);
+        """,
     ];
 
     /// <summary>The version a fully upgraded database reports.</summary>
