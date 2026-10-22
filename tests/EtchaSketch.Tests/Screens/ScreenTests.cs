@@ -30,11 +30,12 @@ public sealed class ScreenTests : IDisposable
         Directory.Delete(_directory, recursive: true);
     }
 
-    private MainViewModel Launch(IReminderScheduler? scheduler = null, Core.Pantry.IProductLookup? products = null, IBarcodeScanner? scanner = null)
+    private MainViewModel Launch(IReminderScheduler? scheduler = null, Core.Pantry.IProductLookup? products = null, IBarcodeScanner? scanner = null,
+        Func<Uri, string, Func<string, Task<System.Text.Json.JsonElement>>>? grocy = null)
     {
         var app = new MainViewModel(new AppEnvironment(Path.Combine(_directory, "data", "etchasketch.db"), _keys,
             new FixedClock(new DateTimeOffset(2026, 10, 21, 9, 0, 0, TimeSpan.Zero)), ReminderScheduler: scheduler,
-            ProductLookup: products ?? new FakeProducts(), BarcodeScanner: scanner));
+            ProductLookup: products ?? new FakeProducts(), BarcodeScanner: scanner, GrocyReader: grocy));
         _apps.Add(app);
         return app;
     }
@@ -989,5 +990,49 @@ public sealed class ScreenTests : IDisposable
 
         things.Items.Single(row => row.Name == "Corolla").DetailCommand.Execute(null);
         Assert.Equal("At 40,100 km · spent 70.00 in total", things.Detail!.Summary);
+    }
+
+    [Fact]
+    public async Task Grocy_is_checked_then_imported_from_the_import_panel_and_the_key_is_needed()
+    {
+        var asked = new List<(Uri, string)>();
+        Func<string, Task<System.Text.Json.JsonElement>> Reader(Uri address, string key)
+        {
+            asked.Add((address, key));
+            return path => Task.FromResult(System.Text.Json.JsonDocument.Parse(path switch
+            {
+                "api/objects/chores" => """[{"id":1,"name":"Water plants","period_type":"daily","period_interval":3,"active":1}]""",
+                "api/chores" => """[{"chore_id":1,"next_estimated_execution_time":"2026-10-22 00:00:00"}]""",
+                _ => "[]",
+            }).RootElement.Clone());
+        }
+
+        var home = SetUp(Launch(grocy: Reader));
+        home.OpenImportCommand.Execute(null);
+        var grocy = home.Import!.Grocy;
+
+        grocy.Address = "grocy.example.com";
+        await grocy.CheckCommand.ExecuteAsync(null);
+        Assert.StartsWith("Type Grocy's address", grocy.ErrorMessage, StringComparison.Ordinal);
+        grocy.Address = "https://grocy.example.com";
+        await grocy.CheckCommand.ExecuteAsync(null);
+        Assert.StartsWith("Paste an API key", grocy.ErrorMessage, StringComparison.Ordinal);
+        Assert.Empty(asked);
+
+        grocy.ApiKey = " key-123 ";
+        await grocy.CheckCommand.ExecuteAsync(null);
+        Assert.Equal((new Uri("https://grocy.example.com/"), "key-123"), asked.Single());
+        Assert.Equal("Ready to add 1 chore, 0 pantry items, 0 batteries, 0 recipes. Chores have no due date yet: each is first due a repeat after it's next done.", grocy.Summary);
+        Assert.Empty(home.ChoreColumns.SelectMany(column => column.Chores));
+
+        grocy.KeepDueDates = true;
+        Assert.EndsWith("Chores are due when Grocy says, so reminders start.", grocy.Summary, StringComparison.Ordinal);
+        grocy.ImportCommand.Execute(null);
+        Assert.StartsWith("Added 1 chore", grocy.Summary, StringComparison.Ordinal);
+        Assert.False(grocy.CanImport);
+
+        home.Import.CloseCommand.Execute(null);
+        var chore = Assert.Single(home.ChoreColumns.SelectMany(column => column.Chores));
+        Assert.Equal("Water plants", chore.Title);
     }
 }

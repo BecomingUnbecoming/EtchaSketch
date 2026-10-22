@@ -33,9 +33,11 @@ public sealed class AppSession : IDisposable
     private readonly string? _deviceName;
 
     private AppSession(SqliteConnection connection, TimeProvider clock, Func<Uri, ISyncServer> syncServers, IDeviceUnlock? deviceUnlock,
-        IReminderScheduler? reminderScheduler, string? deviceName, IProductLookup? productLookup, IBarcodeScanner? barcodeScanner)
+        IReminderScheduler? reminderScheduler, string? deviceName, IProductLookup? productLookup, IBarcodeScanner? barcodeScanner,
+        Func<Uri, string, Func<string, Task<System.Text.Json.JsonElement>>>? grocyReader)
     {
         _productLookup = productLookup;
+        _grocyReader = grocyReader;
         BarcodeScanner = barcodeScanner;
         _connection = connection;
         _deviceName = deviceName;
@@ -89,6 +91,13 @@ public sealed class AppSession : IDisposable
     /// <summary>Looks barcodes up in Open Food Facts, set up the first time someone presses "Look up".</summary>
     public IProductLookup Products => _productLookup ??= OpenFoodFacts.Create();
 
+    private readonly Func<Uri, string, Func<string, Task<System.Text.Json.JsonElement>>>? _grocyReader;
+
+    /// <summary>Reads Grocy's API at an address with an API key, for the Grocy import.</summary>
+    public Func<string, Task<System.Text.Json.JsonElement>> GrocyReader(Uri address, string apiKey) =>
+        _grocyReader?.Invoke(address, apiKey)
+        ?? EtchaSketch.Data.Import.GrocyImport.Client(new HttpClient { Timeout = TimeSpan.FromSeconds(30) }, address, apiKey);
+
     /// <summary>The camera's barcode scanner, or null where there is none.</summary>
     public IBarcodeScanner? BarcodeScanner { get; }
 
@@ -134,7 +143,7 @@ public sealed class AppSession : IDisposable
 
         return new AppSession(connection, environment.Clock ?? TimeProvider.System,
             environment.SyncServerFactory ?? (address => new HttpSyncServer(new HttpClient { BaseAddress = address, Timeout = TimeSpan.FromSeconds(30) })),
-            environment.DeviceUnlock, environment.ReminderScheduler, environment.DeviceName, environment.ProductLookup, environment.BarcodeScanner);
+            environment.DeviceUnlock, environment.ReminderScheduler, environment.DeviceName, environment.ProductLookup, environment.BarcodeScanner, environment.GrocyReader);
     }
 
     /// <summary>
