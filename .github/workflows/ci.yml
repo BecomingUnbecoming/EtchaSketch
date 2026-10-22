@@ -61,6 +61,8 @@ jobs:
     name: Android APK
     needs: test
     runs-on: ubuntu-latest
+    outputs:
+      release-signed: ${{ steps.publish.outputs.release-signed }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -79,7 +81,41 @@ jobs:
             echo "::error::Google Play Services or Firebase dependency found"
             exit 1
           fi
-      - run: dotnet publish src/EtchaSketch.Android -c Release -o out
+      # Every APK must be signed with the same permanent key, or Android refuses to install it over the
+      # last one. The key lives in the repository's secrets (a copy is kept offline); forks don't get it,
+      # so their builds fall back to a throwaway key and are never published as a release.
+      - name: Publish, signed with the release key
+        id: publish
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_SIGNING_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          # The certificate the release key must have. A build signed with anything else is not released.
+          EXPECTED_CERT_SHA256: 71f8cc94d62892a69f4fcfa2b40d481ce95a09d01130981d9439b2557f00d1b1
+        run: |
+          # The version code must grow with every build, or Android won't treat it as an update.
+          VERSION="-p:ApplicationVersion=${{ github.run_number }} -p:ApplicationDisplayVersion=1.0.${{ github.run_number }}"
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning::No release key available: this APK uses a throwaway key and can't update an installed app."
+            dotnet publish src/EtchaSketch.Android -c Release -o out $VERSION
+            echo "release-signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.p12"
+          dotnet publish src/EtchaSketch.Android -c Release -o out $VERSION \
+            -p:AndroidKeyStore=true \
+            -p:AndroidSigningKeyStore="$RUNNER_TEMP/release.p12" \
+            -p:AndroidSigningKeyAlias="$KEY_ALIAS" \
+            -p:AndroidSigningStorePass=env:ANDROID_SIGNING_PASSWORD \
+            -p:AndroidSigningKeyPass=env:ANDROID_SIGNING_PASSWORD
+          rm -f "$RUNNER_TEMP/release.p12"
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          ACTUAL=$("$APKSIGNER" verify --print-certs out/*-Signed.apk | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)
+          if [ "$ACTUAL" != "$EXPECTED_CERT_SHA256" ]; then
+            echo "::error::The APK is signed with $ACTUAL, not the release key."
+            exit 1
+          fi
+          echo "release-signed=true" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
           name: EtchaSketch-android
@@ -113,3 +149,39 @@ jobs:
           curl -sf localhost:5090/health
           test "$(curl -s -o /dev/null -w '%{http_code}' localhost:5090/v1/tasks)" = 401
           docker exec assistant dotnet EtchaSketch.Assistant.dll add-caller ci | tail -1 | grep -Eq '^[0-9a-f]{48}$'
+
+  # Every push to main that passes everything becomes a numbered release with the signed APK and the Linux
+  # desktop build. Phones follow it with Obtainium and the desktop with tools/linux-updater (docs/updates.md).
+  release:
+    name: Publish the release
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.android.outputs.release-signed == 'true'
+    needs: [android, desktop, server-container, assistant-container]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: EtchaSketch-android
+          path: android
+      - uses: actions/download-artifact@v4
+        with:
+          name: EtchaSketch-desktop-linux-x64
+          path: desktop-linux-x64
+      - name: Package and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: 1.0.${{ github.run_number }}
+        run: |
+          set -eu
+          cp android/*-Signed.apk "EtchaSketch-$VERSION.apk"
+          tar -C desktop-linux-x64 -czf "EtchaSketch-desktop-linux-x64-$VERSION.tar.gz" .
+          sha256sum "EtchaSketch-$VERSION.apk" "EtchaSketch-desktop-linux-x64-$VERSION.tar.gz" > SHA256SUMS
+          gh release create "v$VERSION" -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest \
+            --title "EtchaSketch $VERSION" \
+            --notes "Built automatically from $GITHUB_SHA. Phones update through Obtainium; the desktop through tools/linux-updater. See docs/updates.md." \
+            "EtchaSketch-$VERSION.apk" "EtchaSketch-desktop-linux-x64-$VERSION.tar.gz" SHA256SUMS
+          # Keep the ten newest builds.
+          gh release list -R "$GITHUB_REPOSITORY" --limit 200 --json tagName -q '.[].tagName' \
+            | grep -E '^v1\.0\.[0-9]+$' | sort -t. -k3 -n -r | tail -n +11 \
+            | xargs -r -I{} gh release delete {} -R "$GITHUB_REPOSITORY" --yes --cleanup-tag
