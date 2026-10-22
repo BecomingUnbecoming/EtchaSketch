@@ -18,7 +18,7 @@ notify() {
     command -v notify-send >/dev/null 2>&1 && notify-send -a EtchaSketch "EtchaSketch" "$1" || true
 }
 
-release=$(curl -fsSL --max-time 30 "$API")
+release=$(curl -fsSL --max-time 30 "$API") || { say "no release available yet (or GitHub unreachable); trying again later"; exit 0; }
 tag=$(printf '%s' "$release" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)
 [ -n "$tag" ] || { say "no release found"; exit 0; }
 
