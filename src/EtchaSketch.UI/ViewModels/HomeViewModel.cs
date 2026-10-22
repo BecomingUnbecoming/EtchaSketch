@@ -33,8 +33,10 @@ public partial class HomeViewModel : ViewModelBase
         Pantry = new PantryViewModel(session, household, Refresh);
         Shopping = new ShoppingViewModel(session, household, Refresh);
         Meals = new MealsViewModel(session, household, Refresh);
+        Inventory = new InventoryViewModel(session, household, Refresh);
         Refresh();
         CompleteRequestedTasks();
+        OpenRequestedItems();
     }
 
     public string Greeting => $"Hi, {_me.DisplayName}";
@@ -69,6 +71,16 @@ public partial class HomeViewModel : ViewModelBase
 
     /// <summary>The week's meals and the household's recipes.</summary>
     public MealsViewModel Meals { get; }
+
+    /// <summary>The household's things, warranties and who has them.</summary>
+    public InventoryViewModel Inventory { get; }
+
+    /// <summary>Which tab is showing. A scanned item label switches to the inventory.</summary>
+    [ObservableProperty]
+    public partial int SelectedTab { get; set; }
+
+    /// <summary>The inventory tab's place among the tabs.</summary>
+    public const int InventoryTab = 4;
 
     /// <summary>Your own tasks plus everyone's shared chores.</summary>
     public ObservableCollection<TaskRowViewModel> MyTasks { get; } = [];
@@ -188,6 +200,7 @@ public partial class HomeViewModel : ViewModelBase
 
         _session.Reminders.Check(_household, _session.Now);
         _session.PantryAlerts.Check(_household, _session.Now);
+        _session.Inventory.CheckWarranties(_household, _session.Notifications, _session.Now);
         _session.ScheduleReminders(_household, _me);
         UpdateUnreadCount();
     }
@@ -218,6 +231,20 @@ public partial class HomeViewModel : ViewModelBase
         if (done)
         {
             Refresh();
+        }
+    }
+
+    /// <summary>
+    /// Opens items whose QR label was scanned outside the app. The newest wins when several are
+    /// waiting; the inventory says so when a label isn't for this household.
+    /// </summary>
+    public void OpenRequestedItems()
+    {
+        var opened = ItemLinks.TakeOpened();
+        if (opened.Count > 0)
+        {
+            Inventory.Open(opened[^1]);
+            SelectedTab = InventoryTab;
         }
     }
 
@@ -288,11 +315,13 @@ public partial class HomeViewModel : ViewModelBase
         _shownDay = _session.Today;
         _session.Reminders.Check(_household, _session.Now);
         _session.PantryAlerts.Check(_household, _session.Now);
+        _session.Inventory.CheckWarranties(_household, _session.Notifications, _session.Now);
         _session.ScheduleReminders(_household, _me);
         UpdateUnreadCount();
         Pantry?.Refresh();
         Shopping?.Refresh();
         Meals?.Refresh();
+        Inventory?.Refresh();
 
         MyTasks.Clear();
         var filter = FilterText.Trim();

@@ -17,6 +17,8 @@ namespace EtchaSketch.Android;
     MainLauncher = true,
     LaunchMode = LaunchMode.SingleTop,
     ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.UiMode)]
+// An item's QR label ("etchasketch://item/{id}") scanned with the camera opens the item.
+[IntentFilter(new[] { Intent.ActionView }, Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable }, DataScheme = "etchasketch", DataHost = "item")]
 public class MainActivity : AvaloniaMainActivity
 {
     /// <summary>Set on the intent from a reminder's "Done" button: the task to complete.</summary>
@@ -30,6 +32,7 @@ public class MainActivity : AvaloniaMainActivity
         base.OnCreate(savedInstanceState);
         AndroidDeviceUnlock.CurrentActivity = this;
         HandleReminderAction(this, Intent);
+        HandleItemLink(Intent);
 
         // Android 13 and later ask before an app may show notifications at all.
         if (OperatingSystem.IsAndroidVersionAtLeast(33) && CheckSelfPermission(Manifest.Permission.PostNotifications) != Permission.Granted)
@@ -42,6 +45,17 @@ public class MainActivity : AvaloniaMainActivity
     {
         base.OnNewIntent(intent);
         HandleReminderAction(this, intent);
+        HandleItemLink(intent);
+    }
+
+    // The item opens once someone is signed in, behind their PIN if they have one.
+    private static void HandleItemLink(Intent? intent)
+    {
+        if (intent?.Action == Intent.ActionView && ItemLinks.Parse(intent.DataString) is { } itemId)
+        {
+            intent.SetData(null);
+            ItemLinks.RequestOpen(itemId);
+        }
     }
 
     // The task is completed by the home screen once someone is signed in, behind their PIN if they have one.

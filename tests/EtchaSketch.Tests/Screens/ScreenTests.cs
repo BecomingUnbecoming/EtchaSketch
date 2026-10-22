@@ -663,4 +663,126 @@ public sealed class ScreenTests : IDisposable
         Assert.True(home.Meals.Week[0].Meals.Single().IsCooked);
         Assert.Equal("700 g", home.Pantry.Items.Single().AmountText);
     }
+
+    [Fact]
+    public void Things_can_be_added_searched_lent_out_and_returned()
+    {
+        var home = SetUp(Launch());
+        var things = home.Inventory;
+        Assert.False(things.IsFormOpen);
+        things.OpenFormCommand.Execute(null);
+        things.Name = "Drill";
+        things.Location = "Garage";
+        things.Category = "Tools";
+        things.Serial = "DW-123";
+        things.WarrantyEnds = new DateTime(2027, 3, 1);
+        things.WhoHasIt = things.WhoHasItOptions.Single(option => option.Label == "Kai");
+        things.SaveCommand.Execute(null);
+        Assert.False(things.IsFormOpen);
+
+        things.OpenFormCommand.Execute(null);
+        things.Name = "Blender";
+        things.Location = "Kitchen";
+        things.SaveCommand.Execute(null);
+
+        Assert.Equal(["Garage", "Kitchen"], things.Items.Select(row => row.Details.Split(" · ")[0]));
+        var drill = things.Items.Single(row => row.Name == "Drill");
+        Assert.Equal("Garage · Tools · serial DW-123 · warranty until 1 Mar 2027", drill.Details);
+        Assert.Equal("With Kai", drill.WithText);
+
+        things.Search = "dw-1";
+        Assert.Equal(["Drill"], things.Items.Select(row => row.Name));
+        things.Search = null;
+
+        drill.ReturnCommand.Execute(null);
+        Assert.Null(things.Items.Single(row => row.Name == "Drill").WithText);
+        Assert.Equal("Drill is back in its place.", things.Message);
+
+        things.Items.Single(row => row.Name == "Blender").EditCommand.Execute(null);
+        Assert.True(things.IsFormOpen);
+        Assert.Equal("Kitchen", things.Location);
+        things.Name = "Stick blender";
+        things.SaveCommand.Execute(null);
+        Assert.Contains(things.Items, row => row.Name == "Stick blender");
+
+        things.Items.Single(row => row.Name == "Stick blender").DeleteCommand.Execute(null);
+        Assert.Equal(["Drill"], things.Items.Select(row => row.Name));
+    }
+
+    [Fact]
+    public void A_warranty_about_to_end_shows_in_the_notifications_once()
+    {
+        var home = SetUp(Launch());
+        home.Inventory.Name = "Fridge";
+        home.Inventory.WarrantyEnds = new DateTime(2026, 11, 5);
+        home.Inventory.SaveCommand.Execute(null);
+        Assert.True(home.Inventory.Items.Single().IsWarrantyEnding);
+
+        home.OpenNotificationsCommand.Execute(null);
+        home.OpenNotificationsCommand.Execute(null);
+
+        Assert.Single(home.Notifications!.Items, row => row.Title == "The warranty on Fridge ends in 15 days");
+    }
+
+    [Fact]
+    public void A_scanned_label_opens_its_item_on_the_things_tab()
+    {
+        var home = SetUp(Launch());
+        foreach (var name in new[] { "Drill", "Ladder" })
+        {
+            home.Inventory.Name = name;
+            home.Inventory.SaveCommand.Execute(null);
+        }
+
+        var ladder = home.Inventory.Items.Single(row => row.Name == "Ladder").Item;
+        Assert.Equal(ladder.Id, ItemLinks.Parse(ladder.Link));
+        Assert.Equal(ladder.Id, ItemLinks.Parse("etchasketch://item/" + ladder.Id.ToString().ToUpperInvariant() + "/"));
+        Assert.Null(ItemLinks.Parse("https://example.com/item/" + ladder.Id));
+        Assert.Null(ItemLinks.Parse("etchasketch://item/not-an-id"));
+
+        ItemLinks.RequestOpen(ladder.Id);
+        home.OpenRequestedItems();
+
+        Assert.Equal(HomeViewModel.InventoryTab, home.SelectedTab);
+        Assert.True(home.Inventory.IsShowingOne);
+        Assert.Equal(["Ladder"], home.Inventory.Items.Select(row => row.Name));
+        Assert.Empty(ItemLinks.TakeOpened());
+
+        home.Inventory.ShowEverythingCommand.Execute(null);
+        Assert.Equal(2, home.Inventory.Items.Count);
+
+        ItemLinks.RequestOpen(Guid.NewGuid());
+        home.OpenRequestedItems();
+        Assert.False(home.Inventory.IsShowingOne);
+        Assert.Equal("That label is for something that isn't in this household's inventory.", home.Inventory.Message);
+    }
+
+    [Fact]
+    public void A_label_carries_only_the_items_link_and_its_name()
+    {
+        var item = new Core.Pantry.InventoryItem
+        {
+            HouseholdId = Guid.NewGuid(),
+            Name = "Mum's <good> drill",
+            Serial = "SECRET-SERIAL",
+            Notes = "spare key inside",
+            Price = 199,
+        };
+
+        var svg = ItemLabel.Svg(item);
+        var document = System.Xml.Linq.XDocument.Parse(svg);
+
+        Assert.Equal("Mum's <good> drill", document.Descendants().Single(element => element.Name.LocalName == "text").Value);
+        Assert.DoesNotContain("SECRET-SERIAL", svg, StringComparison.Ordinal);
+        Assert.DoesNotContain("spare key", svg, StringComparison.Ordinal);
+        Assert.DoesNotContain("199", svg, StringComparison.Ordinal);
+        Assert.Equal("label-mum-s--good--drill.svg", ItemLabel.FileName(item));
+
+        // The code itself: the same matrix QRCoder makes for the link, drawn one square per dark module.
+        using var generator = new QRCoder.QRCodeGenerator();
+        using var data = generator.CreateQrCode(item.Link, QRCoder.QRCodeGenerator.ECCLevel.M);
+        var dark = data.ModuleMatrix.Sum(row => row.Cast<bool>().Count(module => module));
+        var path = document.Descendants().Single(element => element.Name.LocalName == "path").Attribute("d")!.Value;
+        Assert.Equal(dark, path.Count(c => c == 'M'));
+    }
 }

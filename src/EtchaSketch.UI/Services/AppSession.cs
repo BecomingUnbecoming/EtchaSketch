@@ -48,6 +48,7 @@ public sealed class AppSession : IDisposable
         Pantry = new PantryRepository(connection);
         PantryAlerts = new PantryAlerts(Pantry, Notifications);
         Meals = new MealRepository(connection, Pantry);
+        Inventory = new InventoryRepository(connection);
         Locks = new ProfileLocks(connection);
 
         if (_settings.Get(SyncServerSetting) is { } address && Uri.TryCreate(address, UriKind.Absolute, out var server))
@@ -69,6 +70,9 @@ public sealed class AppSession : IDisposable
 
     /// <summary>Recipes and the meal plan.</summary>
     public MealRepository Meals { get; }
+
+    /// <summary>The household's things, their warranties and who has them.</summary>
+    public InventoryRepository Inventory { get; }
 
     /// <summary>Warns when something in stock is about to go off.</summary>
     public PantryAlerts PantryAlerts { get; }
