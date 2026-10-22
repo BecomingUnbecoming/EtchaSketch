@@ -73,6 +73,8 @@ internal sealed record SyncTable(
 
         new("planned_meals", "SELECT * FROM planned_meals", ["id"], (row, _) => SharedOnly(row)),
 
+        new("inventory_items", "SELECT * FROM inventory_items", ["id"], (row, _) => SharedOnly(row)),
+
         new("quiet_hours", "SELECT * FROM quiet_hours", ["profile_id"], (row, _) => SyncScopes.Person(row["profile_id"])),
 
         new("notifications", "SELECT * FROM notifications", ["id"], (row, _) => SyncScopes.Person(row["recipient_id"])),

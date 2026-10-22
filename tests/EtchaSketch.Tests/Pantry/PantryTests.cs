@@ -191,4 +191,33 @@ public sealed class PantryTests : IDisposable
         Assert.Equal([("Takeaway", Meal.Lunch), ("Curry", Meal.Dinner)], meals.Meals(_home.Id, Today, Today).Select(m => (m.Title, m.Meal)));
         Assert.Empty(meals.Recipes(_home.Id));
     }
+
+    [Fact]
+    public void Things_are_found_by_any_detail_and_remember_who_borrowed_them()
+    {
+        var inventory = new InventoryRepository(_db);
+        var drill = inventory.Add(new InventoryItem { HouseholdId = _home.Id, Name = "Drill", Location = "Garage", Category = "Tools", Serial = "DW-123" });
+        inventory.Add(new InventoryItem { HouseholdId = _home.Id, Name = "Blender", Location = "Kitchen" });
+
+        Assert.Equal(["Drill"], inventory.Items(_home.Id, "dw-1").Select(item => item.Name));
+        Assert.Equal(["Blender", "Drill"], inventory.Items(_home.Id, "").Select(item => item.Name).OrderBy(name => name));
+
+        inventory.Update(drill with { BorrowedBy = _home.Members[1].Id });
+        Assert.Equal(_home.Members[1].Id, inventory.Get(drill.Id)!.BorrowedBy);
+        Assert.Equal($"etchasketch://item/{drill.Id}", drill.Link);
+        Assert.Throws<ArgumentException>(() => inventory.Add(new InventoryItem { HouseholdId = _home.Id, Name = " " }));
+    }
+
+    [Fact]
+    public void A_warranty_ending_within_a_month_warns_each_person_once()
+    {
+        var inventory = new InventoryRepository(_db);
+        inventory.Add(new InventoryItem { HouseholdId = _home.Id, Name = "Fridge", WarrantyEnds = Today.AddDays(30) });
+        inventory.Add(new InventoryItem { HouseholdId = _home.Id, Name = "TV", WarrantyEnds = Today.AddDays(31) });
+        inventory.Add(new InventoryItem { HouseholdId = _home.Id, Name = "Old kettle", WarrantyEnds = Today.AddDays(-1) });
+
+        Assert.Equal(2, inventory.CheckWarranties(_home, _notifications, Wednesday));
+        Assert.Equal(0, inventory.CheckWarranties(_home, _notifications, Wednesday.AddHours(3)));
+        Assert.Equal("The warranty on Fridge ends in 30 days", Assert.Single(_notifications.Feed(_home.Members[0].Id, Wednesday).Shown).Title);
+    }
 }

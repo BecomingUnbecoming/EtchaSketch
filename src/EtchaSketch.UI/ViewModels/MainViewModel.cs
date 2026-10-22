@@ -56,6 +56,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         _lastActivity = _session.Now;
         CurrentPage = StartPage();
         ReminderActions.Requested += OnReminderActionRequested;
+        ItemLinks.Requested += OnItemLinkRequested;
     }
 
     [ObservableProperty]
@@ -64,12 +65,16 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     public void Dispose()
     {
         ReminderActions.Requested -= OnReminderActionRequested;
+        ItemLinks.Requested -= OnItemLinkRequested;
         _session?.Dispose();
     }
 
     // "Done" pressed on a phone notification. A locked or unchosen profile waits: its home screen
     // takes the request when it opens.
     private void OnReminderActionRequested() => Dispatcher.UIThread.Post(() => (CurrentPage as HomeViewModel)?.CompleteRequestedTasks());
+
+    // An item's QR label scanned on a phone. Like "Done", a locked profile opens it after the PIN.
+    private void OnItemLinkRequested() => Dispatcher.UIThread.Post(() => (CurrentPage as HomeViewModel)?.OpenRequestedItems());
 
     /// <summary>Someone touched or typed in the app. The views report this so idle time can be measured.</summary>
     public void NoteActivity()
@@ -103,6 +108,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         _awaySince = null;
         NoteActivity();
         (CurrentPage as HomeViewModel)?.CompleteRequestedTasks();
+        (CurrentPage as HomeViewModel)?.OpenRequestedItems();
     }
 
     /// <summary>Shows the lock screen if the open profile has a PIN. Does nothing otherwise.</summary>

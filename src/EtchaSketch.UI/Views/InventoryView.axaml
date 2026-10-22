@@ -1,0 +1,82 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:EtchaSketch.UI.ViewModels"
+             x:Class="EtchaSketch.UI.Views.InventoryView"
+             x:DataType="vm:InventoryViewModel">
+    <UserControl.Styles>
+        <Style Selector="TextBlock.warning">
+            <Setter Property="Foreground" Value="#C42B1C" />
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer>
+        <StackPanel Spacing="10" Margin="0,8,0,0">
+            <Button Content="Add something" Command="{Binding OpenFormCommand}" IsVisible="{Binding !IsFormOpen}" />
+            <Border Padding="12" CornerRadius="8" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" IsVisible="{Binding IsFormOpen}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="{Binding SaveLabel}" FontWeight="SemiBold" />
+                    <TextBox Text="{Binding Name}" PlaceholderText="What, like Drill or Blender" />
+                    <WrapPanel>
+                        <TextBox Text="{Binding Location}" PlaceholderText="Where (Garage shelf 2…)" Width="200" Margin="0,0,8,8" />
+                        <TextBox Text="{Binding Category}" PlaceholderText="Kind (Tools, Kitchen…)" Width="180" Margin="0,0,8,8" />
+                        <TextBox Text="{Binding Serial}" PlaceholderText="Serial number" Width="180" Margin="0,0,8,8" />
+                    </WrapPanel>
+                    <WrapPanel>
+                        <CalendarDatePicker SelectedDate="{Binding PurchasedOn}" PlaceholderText="Bought on (optional)" Margin="0,0,8,8" />
+                        <NumericUpDown Value="{Binding Price}" Minimum="0" Increment="1" FormatString="0.00" Width="150" Margin="0,0,8,8"
+                                       PlaceholderText="Price" />
+                        <CalendarDatePicker SelectedDate="{Binding WarrantyEnds}" PlaceholderText="Warranty until (optional)" Margin="0,0,8,8"
+                                            ToolTip.Tip="You're reminded a month before it ends" />
+                    </WrapPanel>
+                    <TextBox Text="{Binding Manual}" PlaceholderText="Manual: a link, or where the paper one is" />
+                    <TextBox Text="{Binding Notes}" PlaceholderText="Notes" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="60" />
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Who has it" />
+                        <ComboBox ItemsSource="{Binding WhoHasItOptions}" SelectedItem="{Binding WhoHasIt}" MinWidth="200" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="{Binding SaveLabel}" Command="{Binding SaveCommand}" Classes="accent" />
+                        <Button Content="Cancel" Command="{Binding CancelEditCommand}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <TextBox Text="{Binding Search}" PlaceholderText="Search by name, place, kind, serial or notes" IsVisible="{Binding !IsShowingOne}" />
+            <Button Content="Show everything" Command="{Binding ShowEverythingCommand}" IsVisible="{Binding IsShowingOne}" />
+            <TextBlock Text="{Binding Message}" TextWrapping="Wrap"
+                       IsVisible="{Binding Message, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            <TextBlock Text="Nothing here yet." Opacity="0.7" IsVisible="{Binding IsEmpty}" />
+
+            <ItemsControl ItemsSource="{Binding Items}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:InventoryRowViewModel">
+                        <Border Padding="12" Margin="0,0,0,8" CornerRadius="8"
+                                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding Details}" FontSize="12" TextWrapping="Wrap" Opacity="0.8"
+                                               Classes.warning="{Binding IsWarrantyEnding}"
+                                               IsVisible="{Binding Details, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                    <TextBlock Text="{Binding WithText}" FontSize="12" FontWeight="SemiBold" IsVisible="{Binding IsBorrowed}" />
+                                    <TextBlock Text="{Binding Manual}" FontSize="12" TextWrapping="Wrap" Opacity="0.8"
+                                               IsVisible="{Binding Manual, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                    <TextBlock Text="{Binding Notes}" FontSize="12" TextWrapping="Wrap" Opacity="0.8"
+                                               IsVisible="{Binding Notes, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                </StackPanel>
+                                <WrapPanel Grid.Column="1" VerticalAlignment="Center" MaxWidth="260">
+                                    <Button Content="It's back" Command="{Binding ReturnCommand}" IsVisible="{Binding IsBorrowed}" Margin="0,0,4,4" />
+                                    <Button Content="QR label" Click="Label_Click" Margin="0,0,4,4"
+                                            ToolTip.Tip="Save a label to print. Scanning it on a phone opens this item." />
+                                    <Button Content="Edit" Command="{Binding EditCommand}" Margin="0,0,4,4" />
+                                    <Button Content="Delete" Command="{Binding DeleteCommand}" Margin="0,0,4,4" />
+                                </WrapPanel>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

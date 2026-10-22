@@ -75,7 +75,7 @@
                 </StackPanel>
             </Border>
 
-            <TabControl>
+            <TabControl SelectedIndex="{Binding SelectedTab}">
                 <TabItem Header="My tasks">
                     <ScrollViewer>
                         <StackPanel>
@@ -93,6 +93,9 @@
                 </TabItem>
                 <TabItem Header="Pantry">
                     <ContentControl Content="{Binding Pantry}" />
+                </TabItem>
+                <TabItem Header="Things">
+                    <ContentControl Content="{Binding Inventory}" />
                 </TabItem>
                 <TabItem Header="Chore board">
                     <ScrollViewer HorizontalScrollBarVisibility="Auto">

@@ -255,6 +255,28 @@ public static class Schema
 
         CREATE INDEX planned_meals_by_day ON planned_meals (household_id, day);
         """,
+
+        // 12: the household's things (home inventory), shared with the household.
+        """
+        CREATE TABLE inventory_items (
+            id TEXT PRIMARY KEY,
+            household_id TEXT NOT NULL REFERENCES households (id),
+            name TEXT NOT NULL,
+            location TEXT,
+            category TEXT,
+            serial TEXT,
+            purchased_on TEXT,
+            price TEXT,
+            warranty_ends TEXT,
+            manual TEXT,
+            notes TEXT,
+            borrowed_by TEXT,
+            tier INTEGER NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX inventory_items_by_household ON inventory_items (household_id);
+        """,
     ];
 
     /// <summary>The version a fully upgraded database reports.</summary>
