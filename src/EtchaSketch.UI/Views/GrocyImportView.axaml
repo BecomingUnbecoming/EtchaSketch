@@ -1,0 +1,25 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:EtchaSketch.UI.ViewModels"
+             x:Class="EtchaSketch.UI.Views.GrocyImportView"
+             x:DataType="vm:GrocyImportViewModel">
+    <StackPanel Spacing="8">
+        <TextBlock Text="From Grocy" FontWeight="SemiBold" />
+        <TextBlock TextWrapping="Wrap" FontSize="12" Opacity="0.8"
+                   Text="Brings in Grocy's chores (as shared chores), stock, batteries and recipes. It only reads Grocy, and the key isn't saved." />
+        <TextBox Text="{Binding Address}" PlaceholderText="Grocy's address, like https://grocy.example.com" />
+        <TextBox Text="{Binding ApiKey}" PlaceholderText="API key (Grocy: user menu → Manage API keys)" PasswordChar="•" />
+        <CheckBox IsChecked="{Binding KeepDueDates}"
+                  Content="Keep Grocy's due dates (reminders start right away)" />
+        <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="Check Grocy" Command="{Binding CheckCommand}" />
+            <Button Content="Import" Command="{Binding ImportCommand}" Classes="accent" />
+        </StackPanel>
+        <TextBlock Text="{Binding ErrorMessage}" Foreground="#C42B1C" TextWrapping="Wrap"
+                   IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        <TextBlock Text="{Binding Summary}" TextWrapping="Wrap"
+                   IsVisible="{Binding Summary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        <TextBlock Text="{Binding Problems}" TextWrapping="Wrap" FontSize="12" Opacity="0.8"
+                   IsVisible="{Binding Problems, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+    </StackPanel>
+</UserControl>

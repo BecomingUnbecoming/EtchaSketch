@@ -18,6 +18,9 @@ public partial class ImportViewModel(AppSession session, Household household, Pr
     private IReadOnlyList<ImportedTask>? _tasks;
     private bool _imported;
 
+    /// <summary>Bringing a Grocy household in through its API.</summary>
+    public GrocyImportViewModel Grocy { get; } = new(session, household, me, () => imported?.Invoke());
+
     /// <summary>The file's text. The view fills it from a chosen file; it can also be pasted.</summary>
     [ObservableProperty]
     public partial string FileText { get; set; } = "";

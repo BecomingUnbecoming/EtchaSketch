@@ -96,3 +96,35 @@ and the check says how dates were read. Look at a few entries afterwards.
 
 Entries already in the log (same day, kind, distance and cost) are left out. LubeLogger's reminders and
 plans aren't carried over; add them as upkeep on the vehicle.
+
+## From Grocy
+
+In **Import tasks**, the **From Grocy** section reads Grocy's API. It needs Grocy's address and an API key
+(in Grocy: user menu → Manage API keys → Add). It only reads; nothing in Grocy changes, and the key isn't saved.
+**Check Grocy** says what would come in; **Import** brings it.
+
+- **Chores** become shared household chores, labelled `grocy`, with their description (Grocy's formatting
+  removed) in the notes:
+
+  | Grocy schedule | In EtchaSketch |
+  | --- | --- |
+  | Daily, every N days | Every N days |
+  | Hourly, a whole number of days (Grocy stores "N days after last done" this way) | Every N days |
+  | Hourly, otherwise | Every day, with "In Grocy: every N hours" in the notes |
+  | Weekly on one day | Every N weeks |
+  | Weekly on several days | One chore per day, like "Bins out (Monday)" and "Bins out (Thursday)" |
+  | Monthly / yearly | Every N months / every 12 × N months |
+  | Adaptive, manually | No repeat; the notes say what Grocy did |
+
+  **Due dates:** off by default. Each chore keeps its repeat but has no due date, so nothing reminds until
+  someone marks it done; it's then due a repeat later. Tick **Keep Grocy's due dates** to bring Grocy's
+  next dates and start reminders right away.
+- **Stock** becomes the pantry: amount, unit, place, best-before date, and Grocy's minimum stock amount as
+  "running low at". Products that aren't in stock and have no minimum are left out.
+- **Batteries** become things (kind "Batteries") with a **Charge** upkeep at Grocy's charge interval,
+  counted from the last charge Grocy knows.
+- **Recipes** come in with their ingredients and method; Grocy's own meal-plan helper recipes are left out.
+
+Importing again adds nothing already brought in: chores are recognised by their Grocy id, pantry items and
+recipes by name, batteries by their Grocy id in the notes. Chore history, meal plans and the shopping list
+aren't carried over.

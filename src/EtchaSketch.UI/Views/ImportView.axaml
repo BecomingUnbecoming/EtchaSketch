@@ -52,6 +52,9 @@
                     <Button Content="Turn link lines into links" Command="{Binding ConvertLinkLinesCommand}" />
                     <TextBlock Text="{Binding LinkLinesResult}" TextWrapping="Wrap"
                                IsVisible="{Binding LinkLinesResult, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+                    <Separator />
+                    <ContentControl Content="{Binding Grocy}" />
                 </StackPanel>
             </StackPanel>
         </ScrollViewer>
