@@ -10,4 +10,8 @@ public enum NotificationKind
     AssignedToYou,
     Expiring,
     WarrantyEnding,
+    UpkeepDue,
+
+    /// <summary>A kind this version doesn't know, made by a newer version on another device.</summary>
+    Other,
 }

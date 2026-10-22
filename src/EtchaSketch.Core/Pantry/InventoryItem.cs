@@ -48,6 +48,12 @@ public sealed record InventoryItem : ITiered
     [Tier(PrivacyTier.Household)]
     public Guid? BorrowedBy { get; init; }
 
+    /// <summary>"km" or "mi" for a vehicle, whose log records the distance on its clock; null for anything else.</summary>
+    [Tier(PrivacyTier.Household)]
+    public string? DistanceUnit { get; init; }
+
+    public bool IsVehicle => DistanceUnit is not null;
+
     public PrivacyTier Tier { get; init; } = PrivacyTier.Household;
 
     /// <summary>What a QR label on it points to. Scanning it on a phone opens the item in the app.</summary>

@@ -1,0 +1,101 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:EtchaSketch.UI.ViewModels"
+             x:Class="EtchaSketch.UI.Views.ItemDetailView"
+             x:DataType="vm:ItemDetailViewModel">
+    <UserControl.Styles>
+        <Style Selector="TextBlock.warning">
+            <Setter Property="Foreground" Value="#C42B1C" />
+        </Style>
+    </UserControl.Styles>
+
+    <StackPanel Spacing="10">
+        <Grid ColumnDefinitions="*,Auto">
+            <StackPanel>
+                <TextBlock Text="{Binding Name}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding Summary}" Opacity="0.8" TextWrapping="Wrap"
+                           IsVisible="{Binding Summary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            </StackPanel>
+            <Button Grid.Column="1" Content="Back to the list" Command="{Binding CloseCommand}" VerticalAlignment="Top" />
+        </Grid>
+        <TextBlock Text="{Binding Message}" TextWrapping="Wrap"
+                   IsVisible="{Binding Message, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+        <TextBlock Text="Upkeep" FontWeight="SemiBold" />
+        <TextBlock Text="Nothing on the list. Add what it needs every so often, like an oil change or charging." Opacity="0.7" TextWrapping="Wrap"
+                   IsVisible="{Binding HasNoUpkeep}" />
+        <ItemsControl ItemsSource="{Binding Upkeep}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:UpkeepRowViewModel">
+                    <Border Padding="10" Margin="0,0,0,6" CornerRadius="8"
+                            BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <StackPanel>
+                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding Details}" FontSize="12" TextWrapping="Wrap" Opacity="0.8" Classes.warning="{Binding IsDue}" />
+                            </StackPanel>
+                            <WrapPanel Grid.Column="1" VerticalAlignment="Center" MaxWidth="220">
+                                <Button Content="Done today" Command="{Binding DoneTodayCommand}" Margin="0,0,4,4" />
+                                <Button Content="Delete" Command="{Binding DeleteCommand}" Margin="0,0,4,4" />
+                            </WrapPanel>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <Border Padding="12" CornerRadius="8" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+            <StackPanel Spacing="8">
+                <TextBlock Text="Add upkeep" FontWeight="SemiBold" />
+                <TextBox Text="{Binding UpkeepName}" PlaceholderText="What, like Oil change, Charge or New filter" />
+                <WrapPanel>
+                    <NumericUpDown Value="{Binding EveryDays}" Minimum="1" Increment="1" FormatString="0" Width="170" Margin="0,0,8,8"
+                                   PlaceholderText="Every … days" />
+                    <NumericUpDown Value="{Binding EveryDistance}" Minimum="1" Increment="1000" FormatString="0" Width="190" Margin="0,0,8,8"
+                                   PlaceholderText="Every … (distance)" IsVisible="{Binding IsVehicle}" />
+                </WrapPanel>
+                <WrapPanel>
+                    <CalendarDatePicker SelectedDate="{Binding LastDoneOn}" PlaceholderText="Last done on" Margin="0,0,8,8" />
+                    <NumericUpDown Value="{Binding LastDoneDistance}" Minimum="0" Increment="1000" FormatString="0" Width="210" Margin="0,0,8,8"
+                                   PlaceholderText="Last done at (distance)" IsVisible="{Binding IsVehicle}"
+                                   ToolTip.Tip="Leave empty to use the latest distance in the log" />
+                </WrapPanel>
+                <Button Content="Add upkeep" Command="{Binding AddUpkeepCommand}" />
+            </StackPanel>
+        </Border>
+
+        <TextBlock Text="Log" FontWeight="SemiBold" />
+        <Border Padding="12" CornerRadius="8" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+            <StackPanel Spacing="8">
+                <WrapPanel>
+                    <ComboBox ItemsSource="{Binding LogKinds}" SelectedItem="{Binding EntryKind}" MinWidth="120" Margin="0,0,8,8" />
+                    <CalendarDatePicker SelectedDate="{Binding EntryOn}" Margin="0,0,8,8" />
+                    <NumericUpDown Value="{Binding EntryDistance}" Minimum="0" Increment="100" FormatString="0" Width="190" Margin="0,0,8,8"
+                                   PlaceholderText="Distance on the clock" IsVisible="{Binding IsVehicle}" />
+                </WrapPanel>
+                <WrapPanel>
+                    <NumericUpDown Value="{Binding EntryAmount}" Minimum="0" Increment="1" FormatString="0.##" Width="150" Margin="0,0,8,8"
+                                   PlaceholderText="{Binding AmountLabel}" IsVisible="{Binding IsFuel}" />
+                    <NumericUpDown Value="{Binding EntryCost}" Minimum="0" Increment="1" FormatString="0.00" Width="150" Margin="0,0,8,8"
+                                   PlaceholderText="Cost" />
+                    <ComboBox ItemsSource="{Binding UpkeepOptions}" SelectedItem="{Binding EntryUpkeep}" MinWidth="180" Margin="0,0,8,8"
+                              ToolTip.Tip="If this did something on the upkeep list, it counts as done" />
+                </WrapPanel>
+                <TextBox Text="{Binding EntryNote}" PlaceholderText="Note (optional)" />
+                <Button Content="Add to the log" Command="{Binding AddEntryCommand}" />
+            </StackPanel>
+        </Border>
+
+        <TextBlock Text="Nothing logged yet." Opacity="0.7" IsVisible="{Binding HasNoLog}" />
+        <ItemsControl ItemsSource="{Binding Log}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:LogRowViewModel">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" Margin="0,0,0,6">
+                        <TextBlock Text="{Binding Text}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Content="Delete" Command="{Binding DeleteCommand}" />
+                    </Grid>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </StackPanel>
+</UserControl>

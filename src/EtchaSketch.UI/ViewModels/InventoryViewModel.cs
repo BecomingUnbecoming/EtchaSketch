@@ -69,6 +69,22 @@ public partial class InventoryViewModel : ViewModelBase
     [ObservableProperty]
     public partial string? Notes { get; set; }
 
+    /// <summary>A vehicle keeps a distance in its log, and its upkeep can be due by distance.</summary>
+    [ObservableProperty]
+    public partial bool IsVehicle { get; set; }
+
+    public IReadOnlyList<string> DistanceUnits { get; } = ["km", "mi"];
+
+    [ObservableProperty]
+    public partial string DistanceUnit { get; set; } = "km";
+
+    /// <summary>One thing's upkeep and log, or null when closed.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsShowingDetail))]
+    public partial ItemDetailViewModel? Detail { get; private set; }
+
+    public bool IsShowingDetail => Detail is not null;
+
     public IReadOnlyList<AssigneeOption> WhoHasItOptions { get; }
 
     [ObservableProperty]
@@ -103,8 +119,10 @@ public partial class InventoryViewModel : ViewModelBase
             : _session.Inventory.Items(_household.Id, Search);
         foreach (var item in items)
         {
-            Items.Add(new InventoryRowViewModel(item, today, NameOf, Edit, Delete, ReturnIt));
+            Items.Add(new InventoryRowViewModel(item, today, NameOf, Edit, Delete, ReturnIt, ShowDetail));
         }
+
+        Detail?.Refresh();
 
         OnPropertyChanged(nameof(IsEmpty));
     }
@@ -160,6 +178,7 @@ public partial class InventoryViewModel : ViewModelBase
                 Manual = Manual,
                 Notes = Notes,
                 BorrowedBy = WhoHasIt.ProfileId,
+                DistanceUnit = IsVehicle ? DistanceUnit : null,
             };
             if (_editing is null)
             {
@@ -196,6 +215,8 @@ public partial class InventoryViewModel : ViewModelBase
         Manual = item.Manual;
         Notes = item.Notes;
         WhoHasIt = WhoHasItOptions.FirstOrDefault(option => option.ProfileId == item.BorrowedBy) ?? WhoHasItOptions[0];
+        IsVehicle = item.IsVehicle;
+        DistanceUnit = item.DistanceUnit ?? "km";
         IsEditing = true;
         IsFormOpen = true;
     }
@@ -213,6 +234,11 @@ public partial class InventoryViewModel : ViewModelBase
             ClearForm();
         }
 
+        if (Detail?.ItemId == item.Id)
+        {
+            Detail = null;
+        }
+
         _changed();
     }
 
@@ -222,6 +248,8 @@ public partial class InventoryViewModel : ViewModelBase
         Message = $"{item.Name} is back in its place.";
         _changed();
     }
+
+    private void ShowDetail(InventoryItem item) => Detail = new ItemDetailViewModel(_session, item, _changed, () => Detail = null);
 
     private string NameOf(Guid profileId) =>
         _household.Members.FirstOrDefault(member => member.Id == profileId)?.DisplayName ?? "Someone";
@@ -239,6 +267,8 @@ public partial class InventoryViewModel : ViewModelBase
         Manual = null;
         Notes = null;
         WhoHasIt = WhoHasItOptions[0];
+        IsVehicle = false;
+        DistanceUnit = "km";
         IsEditing = false;
         IsFormOpen = false;
     }
@@ -248,12 +278,13 @@ public partial class InventoryViewModel : ViewModelBase
 public sealed class InventoryRowViewModel
 {
     public InventoryRowViewModel(InventoryItem item, DateOnly today, Func<Guid, string> nameOf,
-        Action<InventoryItem> edit, Action<InventoryItem> delete, Action<InventoryItem> returnIt)
+        Action<InventoryItem> edit, Action<InventoryItem> delete, Action<InventoryItem> returnIt, Action<InventoryItem> showDetail)
     {
         Item = item;
         Name = item.Name;
         var details = new[]
         {
+            item.IsVehicle ? "Vehicle" : null,
             item.Location,
             item.Category,
             item.Serial is { } serial ? $"serial {serial}" : null,
@@ -273,6 +304,7 @@ public sealed class InventoryRowViewModel
         EditCommand = new RelayCommand(() => edit(item));
         DeleteCommand = new RelayCommand(() => delete(item));
         ReturnCommand = new RelayCommand(() => returnIt(item), () => item.BorrowedBy is not null);
+        DetailCommand = new RelayCommand(() => showDetail(item));
     }
 
     /// <summary>The item itself, for its QR label.</summary>
@@ -299,4 +331,7 @@ public sealed class InventoryRowViewModel
 
     /// <summary>Marks it back in its place.</summary>
     public IRelayCommand ReturnCommand { get; }
+
+    /// <summary>Opens its upkeep and log.</summary>
+    public IRelayCommand DetailCommand { get; }
 }

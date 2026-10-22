@@ -277,6 +277,44 @@ public static class Schema
 
         CREATE INDEX inventory_items_by_household ON inventory_items (household_id);
         """,
+
+        // 13: upkeep (services, battery charging, filters…) and an item's log (fuel, services, repairs).
+        // An inventory item with a distance unit is a vehicle.
+        """
+        ALTER TABLE inventory_items ADD COLUMN distance_unit TEXT;
+
+        CREATE TABLE upkeep (
+            id TEXT PRIMARY KEY,
+            household_id TEXT NOT NULL REFERENCES households (id),
+            item_id TEXT NOT NULL REFERENCES inventory_items (id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            every_days INTEGER,
+            every_distance INTEGER,
+            last_done_on TEXT NOT NULL,
+            last_done_distance INTEGER,
+            tier INTEGER NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX upkeep_by_item ON upkeep (item_id);
+
+        CREATE TABLE item_log (
+            id TEXT PRIMARY KEY,
+            household_id TEXT NOT NULL REFERENCES households (id),
+            item_id TEXT NOT NULL REFERENCES inventory_items (id) ON DELETE CASCADE,
+            kind TEXT NOT NULL,
+            on_date TEXT NOT NULL,
+            distance INTEGER,
+            amount TEXT,
+            cost TEXT,
+            note TEXT,
+            upkeep_id TEXT,
+            tier INTEGER NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX item_log_by_item ON item_log (item_id);
+        """,
     ];
 
     /// <summary>The version a fully upgraded database reports.</summary>

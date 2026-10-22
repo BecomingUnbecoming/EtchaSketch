@@ -75,6 +75,10 @@ internal sealed record SyncTable(
 
         new("inventory_items", "SELECT * FROM inventory_items", ["id"], (row, _) => SharedOnly(row)),
 
+        new("upkeep", "SELECT * FROM upkeep", ["id"], (row, _) => SharedOnly(row)),
+
+        new("item_log", "SELECT * FROM item_log", ["id"], (row, _) => SharedOnly(row)),
+
         new("quiet_hours", "SELECT * FROM quiet_hours", ["profile_id"], (row, _) => SyncScopes.Person(row["profile_id"])),
 
         new("notifications", "SELECT * FROM notifications", ["id"], (row, _) => SyncScopes.Person(row["recipient_id"])),

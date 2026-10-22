@@ -14,12 +14,12 @@ public sealed class InventoryRepository(SqliteConnection connection)
     /// <summary>How many days before a warranty ends it warns.</summary>
     public const int WarrantyWarningDays = 30;
 
-    private const string Columns = "id, household_id, name, location, category, serial, purchased_on, price, warranty_ends, manual, notes, borrowed_by, tier";
+    private const string Columns = "id, household_id, name, location, category, serial, purchased_on, price, warranty_ends, manual, notes, borrowed_by, tier, distance_unit";
 
     public InventoryItem Add(InventoryItem item)
     {
         item = Validated(item);
-        Execute($"INSERT INTO inventory_items ({Columns}, created_at) VALUES ($id, $household, $name, $location, $category, $serial, $purchased, $price, $warranty, $manual, $notes, $borrowed, $tier, $created)",
+        Execute($"INSERT INTO inventory_items ({Columns}, created_at) VALUES ($id, $household, $name, $location, $category, $serial, $purchased, $price, $warranty, $manual, $notes, $borrowed, $tier, $unit, $created)",
             [.. Parameters(item), ("$created", DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture))]);
         return item;
     }
@@ -30,7 +30,7 @@ public sealed class InventoryRepository(SqliteConnection connection)
         var changed = Execute(
             """
             UPDATE inventory_items SET name = $name, location = $location, category = $category, serial = $serial, purchased_on = $purchased,
-                price = $price, warranty_ends = $warranty, manual = $manual, notes = $notes, borrowed_by = $borrowed, tier = $tier
+                price = $price, warranty_ends = $warranty, manual = $manual, notes = $notes, borrowed_by = $borrowed, tier = $tier, distance_unit = $unit
             WHERE id = $id
             """,
             Parameters(item));
@@ -108,6 +108,12 @@ public sealed class InventoryRepository(SqliteConnection connection)
             Manual = Short(item.Manual, 500),
             Notes = Short(item.Notes, 4000),
             Tier = item.Tier < PrivacyTier.Household ? PrivacyTier.Household : item.Tier,
+            DistanceUnit = item.DistanceUnit?.Trim().ToLowerInvariant() switch
+            {
+                null or "" => null,
+                "km" or "mi" => item.DistanceUnit.Trim().ToLowerInvariant(),
+                _ => throw new ArgumentException("Distances are in km or mi.", nameof(item)),
+            },
         };
     }
 
@@ -122,7 +128,7 @@ public sealed class InventoryRepository(SqliteConnection connection)
         ("$id", item.Id.ToString()), ("$household", item.HouseholdId.ToString()), ("$name", item.Name), ("$location", item.Location),
         ("$category", item.Category), ("$serial", item.Serial), ("$purchased", Date(item.PurchasedOn)),
         ("$price", item.Price?.ToString(CultureInfo.InvariantCulture)), ("$warranty", Date(item.WarrantyEnds)), ("$manual", item.Manual),
-        ("$notes", item.Notes), ("$borrowed", item.BorrowedBy?.ToString()), ("$tier", (int)item.Tier),
+        ("$notes", item.Notes), ("$borrowed", item.BorrowedBy?.ToString()), ("$tier", (int)item.Tier), ("$unit", item.DistanceUnit),
     ];
 
     private static string? Date(DateOnly? date) => date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
@@ -152,6 +158,7 @@ public sealed class InventoryRepository(SqliteConnection connection)
                 Notes = reader.IsDBNull(10) ? null : reader.GetString(10),
                 BorrowedBy = reader.IsDBNull(11) ? null : Guid.Parse(reader.GetString(11)),
                 Tier = (PrivacyTier)reader.GetInt32(12),
+                DistanceUnit = reader.IsDBNull(13) ? null : reader.GetString(13),
             });
         }
 

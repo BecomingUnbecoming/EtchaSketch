@@ -785,4 +785,69 @@ public sealed class ScreenTests : IDisposable
         var path = document.Descendants().Single(element => element.Name.LocalName == "path").Attribute("d")!.Value;
         Assert.Equal(dark, path.Count(c => c == 'M'));
     }
+
+    [Fact]
+    public void A_vehicles_service_comes_due_after_a_fill_up_and_moves_on_when_done()
+    {
+        var home = SetUp(Launch());
+        var things = home.Inventory;
+        things.Name = "Corolla";
+        things.IsVehicle = true;
+        things.SaveCommand.Execute(null);
+        var car = things.Items.Single();
+        Assert.StartsWith("Vehicle", car.Details, StringComparison.Ordinal);
+
+        car.DetailCommand.Execute(null);
+        var detail = things.Detail!;
+        Assert.True(detail.IsVehicle);
+        detail.EntryKind = detail.LogKinds.Single(kind => kind.Label == "Fuel");
+        detail.EntryDistance = 30_000;
+        detail.EntryAmount = 40;
+        detail.EntryCost = 70;
+        detail.AddEntryCommand.Execute(null);
+        Assert.Equal("At 30,000 km · spent 70.00 in total", detail.Summary);
+
+        detail.UpkeepName = "Oil change";
+        detail.EveryDistance = 10_000;
+        detail.AddUpkeepCommand.Execute(null);
+        Assert.Null(detail.Message);
+        var oil = Assert.Single(detail.Upkeep);
+        Assert.Equal("every 10,000 km · next 40,000 km", oil.Details);
+        Assert.False(oil.IsDue);
+
+        detail.EntryKind = detail.LogKinds.Single(kind => kind.Label == "Fuel");
+        detail.EntryDistance = 40_200;
+        detail.AddEntryCommand.Execute(null);
+        Assert.True(detail.Upkeep.Single().IsDue);
+        home.OpenNotificationsCommand.Execute(null);
+        Assert.Contains(home.Notifications!.Items, row => row.Title == "Corolla: Oil change is due");
+
+        detail.Upkeep.Single().DoneTodayCommand.Execute(null);
+        Assert.Equal("every 10,000 km · next 50,200 km · done once", detail.Upkeep.Single().Details);
+        Assert.Equal("21 Oct 2026 · Oil change · 40,200 km", detail.Log[0].Text);
+
+        detail.CloseCommand.Execute(null);
+        Assert.False(things.IsShowingDetail);
+    }
+
+    [Fact]
+    public void A_battery_is_charged_on_a_schedule_and_counts_its_charges()
+    {
+        var home = SetUp(Launch());
+        home.Inventory.Name = "Drill battery";
+        home.Inventory.SaveCommand.Execute(null);
+        home.Inventory.Items.Single().DetailCommand.Execute(null);
+        var detail = home.Inventory.Detail!;
+        Assert.False(detail.IsVehicle);
+
+        detail.UpkeepName = "Charge";
+        detail.EveryDistance = 500;
+        detail.EveryDays = 90;
+        detail.AddUpkeepCommand.Execute(null);
+        Assert.Equal("every 90 days · next 19 Jan 2027", detail.Upkeep.Single().Details);
+
+        detail.Upkeep.Single().DoneTodayCommand.Execute(null);
+        detail.Upkeep.Single().DoneTodayCommand.Execute(null);
+        Assert.EndsWith("done 2 times", detail.Upkeep.Single().Details, StringComparison.Ordinal);
+    }
 }
