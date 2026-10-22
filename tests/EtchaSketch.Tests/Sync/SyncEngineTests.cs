@@ -367,6 +367,7 @@ public sealed class SyncEngineTests : IAsyncLifetime
             Pantry = new Data.Pantry.PantryRepository(_db);
             Inventory = new Data.Pantry.InventoryRepository(_db);
             Upkeep = new Data.Pantry.UpkeepRepository(_db, Inventory);
+            Events = new Data.Calendar.EventRepository(_db);
         }
 
         public Data.Pantry.PantryRepository Pantry { get; }
@@ -374,6 +375,8 @@ public sealed class SyncEngineTests : IAsyncLifetime
         public Data.Pantry.InventoryRepository Inventory { get; }
 
         public Data.Pantry.UpkeepRepository Upkeep { get; }
+
+        public Data.Calendar.EventRepository Events { get; }
 
         public ManualClock Clock { get; } = new(Wednesday);
 
@@ -389,10 +392,25 @@ public sealed class SyncEngineTests : IAsyncLifetime
 
         public ProfileLocks Locks { get; }
 
-        /// <summary>Whether any table on this device holds the text at all.</summary>
+        /// <summary>
+        /// Whether any table on this device holds the text at all. Every table is read, so a table
+        /// added later is covered without anyone remembering to list it.
+        /// </summary>
         public bool Contains(string text)
         {
-            foreach (var table in new[] { "households", "profiles", "tasks", "task_completions", "notifications", "quiet_hours", "task_links", "task_comments" })
+            var tables = new List<string>();
+            using (var list = _db.CreateCommand())
+            {
+                list.CommandText = "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'";
+                using var names = list.ExecuteReader();
+                while (names.Read())
+                {
+                    tables.Add(names.GetString(0));
+                }
+            }
+
+            Assert.Contains("calendar_events", tables);
+            foreach (var table in tables)
             {
                 using var command = _db.CreateCommand();
                 command.CommandText = $"SELECT * FROM {table}";
@@ -591,5 +609,29 @@ public sealed class SyncEngineTests : IAsyncLifetime
         Assert.Equal(40_100, kaisPhone.Upkeep.DistanceNow(car.Id));
         Assert.True(kaisPhone.Upkeep.GetUpkeep(oil.Id)!.IsDue(new DateOnly(2026, 10, 21), kaisPhone.Upkeep.DistanceNow(car.Id)));
         Assert.Equal("km", kaisPhone.Inventory.Get(car.Id)!.DistanceUnit);
+    }
+
+    [Fact]
+    public async Task A_shared_event_reaches_the_household_but_its_notes_and_private_events_never_leave_their_owner()
+    {
+        var monday = new DateOnly(2026, 10, 19);
+        _desktop.Events.Add(new Core.Calendar.CalendarEvent
+        {
+            HouseholdId = _home.Id, OwnerId = _robin.Id, Title = "Dinner at Mum's", StartDate = monday, StartTime = new TimeOnly(18, 30),
+            Tier = PrivacyTier.Household, Notes = "Bring the good wine",
+        });
+        _desktop.Events.Add(new Core.Calendar.CalendarEvent { HouseholdId = _home.Id, OwnerId = _robin.Id, Title = "Therapy session", StartDate = monday });
+        await _desktop.Sync.SyncAsync();
+
+        var kaisPhone = await JoinAs(_kai, "kai-phone");
+        var robinsPhone = await JoinAs(_robin, "robin-phone");
+
+        Assert.Equal(["Dinner at Mum's"], kaisPhone.Events.VisibleTo(_kai.Id, monday, monday).Select(found => found.Title));
+        Assert.False(kaisPhone.Contains("Therapy"));
+        Assert.False(kaisPhone.Contains("good wine"));
+
+        var robins = robinsPhone.Events.VisibleTo(_robin.Id, monday, monday);
+        Assert.Equal(["Therapy session", "Dinner at Mum's"], robins.Select(found => found.Title));
+        Assert.Equal("Bring the good wine", robins.Single(found => found.Title == "Dinner at Mum's").Notes);
     }
 }

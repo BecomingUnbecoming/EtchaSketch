@@ -34,6 +34,7 @@ public partial class HomeViewModel : ViewModelBase
         Shopping = new ShoppingViewModel(session, household, Refresh);
         Meals = new MealsViewModel(session, household, Refresh);
         Inventory = new InventoryViewModel(session, household, Refresh);
+        Calendar = new CalendarViewModel(session, () => _household, me, Refresh);
         Refresh();
         CompleteRequestedTasks();
         OpenRequestedItems();
@@ -75,12 +76,15 @@ public partial class HomeViewModel : ViewModelBase
     /// <summary>The household's things, warranties and who has them.</summary>
     public InventoryViewModel Inventory { get; }
 
+    /// <summary>Everything dated, in one calendar.</summary>
+    public CalendarViewModel Calendar { get; }
+
     /// <summary>Which tab is showing. A scanned item label switches to the inventory.</summary>
     [ObservableProperty]
     public partial int SelectedTab { get; set; }
 
     /// <summary>The inventory tab's place among the tabs.</summary>
-    public const int InventoryTab = 4;
+    public const int InventoryTab = 5;
 
     /// <summary>Your own tasks plus everyone's shared chores.</summary>
     public ObservableCollection<TaskRowViewModel> MyTasks { get; } = [];
@@ -324,6 +328,7 @@ public partial class HomeViewModel : ViewModelBase
         Shopping?.Refresh();
         Meals?.Refresh();
         Inventory?.Refresh();
+        Calendar?.Refresh();
 
         MyTasks.Clear();
         var filter = FilterText.Trim();

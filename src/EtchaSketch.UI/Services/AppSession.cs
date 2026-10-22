@@ -55,6 +55,8 @@ public sealed class AppSession : IDisposable
         Meals = new MealRepository(connection, Pantry);
         Inventory = new InventoryRepository(connection);
         Upkeep = new UpkeepRepository(connection, Inventory);
+        Events = new EtchaSketch.Data.Calendar.EventRepository(connection);
+        Calendar = new EtchaSketch.Data.Calendar.CalendarFeed(Tasks, Events, Inventory, Upkeep, Meals);
         Locks = new ProfileLocks(connection);
 
         if (_settings.Get(SyncServerSetting) is { } address && Uri.TryCreate(address, UriKind.Absolute, out var server))
@@ -79,6 +81,12 @@ public sealed class AppSession : IDisposable
 
     /// <summary>The household's things, their warranties and who has them.</summary>
     public InventoryRepository Inventory { get; }
+
+    /// <summary>Calendar events and time blocks.</summary>
+    public EtchaSketch.Data.Calendar.EventRepository Events { get; }
+
+    /// <summary>Everything dated, from every module, for one person's calendar.</summary>
+    public EtchaSketch.Data.Calendar.CalendarFeed Calendar { get; }
 
     /// <summary>What the household's things need every so often, and their logs.</summary>
     public UpkeepRepository Upkeep { get; }

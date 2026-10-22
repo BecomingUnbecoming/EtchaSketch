@@ -85,6 +85,9 @@
                         </StackPanel>
                     </ScrollViewer>
                 </TabItem>
+                <TabItem Header="Calendar">
+                    <ContentControl Content="{Binding Calendar}" />
+                </TabItem>
                 <TabItem Header="Shopping">
                     <ContentControl Content="{Binding Shopping}" />
                 </TabItem>

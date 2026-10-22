@@ -79,6 +79,23 @@ internal sealed record SyncTable(
 
         new("item_log", "SELECT * FROM item_log", ["id"], (row, _) => SharedOnly(row)),
 
+        // Like tasks: a shared event travels with the household, a private one only with its owner,
+        // and the notes always stay in the owner's own stream.
+        new("calendar_events",
+            """
+            SELECT id, household_id, owner_id, title, kind, start_date, start_time, end_date, end_time, location, tier, created_at
+            FROM calendar_events
+            """,
+            ["id"],
+            (row, _) => Convert.ToInt32(row["tier"]) <= (int)PrivacyTier.Household
+                ? SyncScopes.Household(row["household_id"])
+                : SyncScopes.Person(row["owner_id"])),
+
+        new("event_notes", "SELECT id, owner_id, notes FROM calendar_events WHERE notes IS NOT NULL", ["id"],
+            (row, _) => SyncScopes.Person(row["owner_id"]),
+            Upsert: "UPDATE calendar_events SET notes = $notes WHERE id = $id",
+            Delete: "UPDATE calendar_events SET notes = NULL WHERE id = $id"),
+
         new("quiet_hours", "SELECT * FROM quiet_hours", ["profile_id"], (row, _) => SyncScopes.Person(row["profile_id"])),
 
         new("notifications", "SELECT * FROM notifications", ["id"], (row, _) => SyncScopes.Person(row["recipient_id"])),

@@ -1,0 +1,129 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:EtchaSketch.UI.ViewModels"
+             x:Class="EtchaSketch.UI.Views.CalendarView"
+             x:DataType="vm:CalendarViewModel">
+    <UserControl.Styles>
+        <Style Selector="TextBlock.today">
+            <Setter Property="Foreground" Value="{DynamicResource SystemAccentColor}" />
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer>
+        <StackPanel Spacing="10" Margin="0,8,0,0">
+            <WrapPanel>
+                <Button Content="Day" Command="{Binding ShowDayCommand}" Margin="0,0,4,4" />
+                <Button Content="Week" Command="{Binding ShowWeekCommand}" Margin="0,0,4,4" />
+                <Button Content="Month" Command="{Binding ShowMonthCommand}" Margin="0,0,12,4" />
+                <Button Content="‹" Command="{Binding PreviousCommand}" Margin="0,0,4,4" ToolTip.Tip="Earlier" />
+                <Button Content="Today" Command="{Binding TodayCommand}" Margin="0,0,4,4" />
+                <Button Content="›" Command="{Binding NextCommand}" Margin="0,0,12,4" ToolTip.Tip="Later" />
+                <Button Content="New event" Command="{Binding NewEventCommand}" Classes="accent" Margin="0,0,4,4" IsVisible="{Binding !IsFormOpen}" />
+            </WrapPanel>
+            <TextBlock Text="{Binding Heading}" FontSize="18" FontWeight="SemiBold" />
+
+            <Border Padding="12" CornerRadius="8" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" IsVisible="{Binding IsFormOpen}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="{Binding SaveLabel}" FontWeight="SemiBold" />
+                    <TextBox Text="{Binding Title}" PlaceholderText="What, like Dentist or Deep work" />
+                    <WrapPanel>
+                        <CalendarDatePicker SelectedDate="{Binding StartDate}" PlaceholderText="Day" Margin="0,0,8,8" />
+                        <CheckBox Content="All day" IsChecked="{Binding IsAllDay}" Margin="0,0,8,8" />
+                        <TimePicker SelectedTime="{Binding StartTime}" ClockIdentifier="24HourClock" IsVisible="{Binding HasTimes}" Margin="0,0,8,8" />
+                        <TimePicker SelectedTime="{Binding EndTime}" ClockIdentifier="24HourClock" IsVisible="{Binding HasTimes}" Margin="0,0,8,8"
+                                    ToolTip.Tip="When it ends" />
+                    </WrapPanel>
+                    <CalendarDatePicker SelectedDate="{Binding EndDate}" PlaceholderText="Ends on (if it's more than a day)" />
+                    <TextBox Text="{Binding Location}" PlaceholderText="Where (optional)" />
+                    <TextBox Text="{Binding Notes}" PlaceholderText="Notes (only you see these)" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="50" />
+                    <CheckBox Content="Time block (time set aside, not an appointment)" IsChecked="{Binding IsTimeBlock}" />
+                    <CheckBox Content="Share with the household (your notes stay yours)" IsChecked="{Binding IsShared}" />
+                    <TextBlock Text="{Binding Message}" Foreground="#C42B1C" TextWrapping="Wrap"
+                               IsVisible="{Binding Message, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    <WrapPanel>
+                        <Button Content="{Binding SaveLabel}" Command="{Binding SaveCommand}" Classes="accent" Margin="0,0,8,0" />
+                        <Button Content="Cancel" Command="{Binding CancelEditCommand}" Margin="0,0,8,0" />
+                        <Button Content="Delete" Command="{Binding DeleteCommand}" IsVisible="{Binding IsEditing}" />
+                    </WrapPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Day and week: a list, one heading per day. -->
+            <ItemsControl ItemsSource="{Binding Days}" IsVisible="{Binding IsList}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:CalendarDayViewModel">
+                        <StackPanel Spacing="4" Margin="0,0,0,10">
+                            <TextBlock Text="{Binding Heading}" FontWeight="SemiBold" />
+                            <TextBlock Text="Nothing on." Opacity="0.6" FontSize="12" IsVisible="{Binding IsEmpty}" />
+                            <ItemsControl ItemsSource="{Binding Entries}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:CalendarEntryViewModel">
+                                        <Border Padding="8" Margin="0,0,0,4" CornerRadius="6"
+                                                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+                                            <Grid ColumnDefinitions="4,Auto,*,Auto" ColumnSpacing="8">
+                                                <Border Background="{Binding Colour}" CornerRadius="2" />
+                                                <TextBlock Grid.Column="1" Text="{Binding TimeText}" MinWidth="44" Opacity="0.8" VerticalAlignment="Center" />
+                                                <StackPanel Grid.Column="2">
+                                                    <TextBlock Text="{Binding Title}" TextWrapping="Wrap" />
+                                                    <TextBlock FontSize="11" Opacity="0.7" TextWrapping="Wrap">
+                                                        <Run Text="{Binding KindText}" />
+                                                        <Run Text="{Binding Detail, StringFormat=' · {0}'}" />
+                                                    </TextBlock>
+                                                </StackPanel>
+                                                <Button Grid.Column="3" Content="Edit" Command="{Binding EditCommand}" IsVisible="{Binding CanEdit}" VerticalAlignment="Center" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- Month: a grid of weeks; a day opens in the day view. -->
+            <StackPanel Spacing="4" IsVisible="{Binding IsMonth}">
+                <ItemsControl ItemsSource="{Binding WeekdayNames}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <UniformGrid Columns="7" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                            <TextBlock Text="{Binding}" FontSize="12" Opacity="0.7" HorizontalAlignment="Center" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <ItemsControl ItemsSource="{Binding Days}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <UniformGrid Columns="7" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:CalendarDayViewModel">
+                            <Button Command="{Binding OpenCommand}" Opacity="{Binding Opacity}" Padding="4" Margin="1" MinHeight="64"
+                                    HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Left" VerticalContentAlignment="Top">
+                                <StackPanel Spacing="1">
+                                    <TextBlock Text="{Binding Number}" FontWeight="SemiBold" Classes.today="{Binding IsToday}" />
+                                    <ItemsControl ItemsSource="{Binding FirstEntries}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:CalendarEntryViewModel">
+                                                <Border Background="{Binding Colour}" CornerRadius="2" Padding="2,0" Margin="0,1,0,0">
+                                                    <TextBlock Text="{Binding Title}" FontSize="10" Foreground="White" TextTrimming="CharacterEllipsis" />
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <TextBlock Text="{Binding MoreText}" FontSize="10" Opacity="0.7"
+                                               IsVisible="{Binding MoreText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                </StackPanel>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
