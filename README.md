@@ -29,6 +29,8 @@ To sync between devices, run the sync server on a machine at home: see [docs/syn
 
 To install and keep up to date (phones through Obtainium, the Linux desktop through a small updater), see [docs/updates.md](docs/updates.md).
 
+For the official docs and licenses of the libraries, services and standards EtchaSketch uses or connects to, see [docs/third-party-reference.md](docs/third-party-reference.md).
+
 ## License
 
 AGPL-3.0. See [LICENSE](LICENSE).

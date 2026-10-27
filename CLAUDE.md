@@ -9,3 +9,6 @@ made-up names (Robin, Kai) and example addresses (`192.168.1.20`).
 
 If a task needs details of a particular setup, ask for them in the conversation and keep them out of
 the repository.
+
+Before adding a dependency or building a connector, check [docs/third-party-reference.md](docs/third-party-reference.md)
+for the official docs and license of each library, service and standard the plans name.
